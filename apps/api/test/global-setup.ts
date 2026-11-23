@@ -1,8 +1,9 @@
-// API 테스트 전: 테스트 DB 에 마이그레이션 적용 + 모든 데이터 비우기
+// API 테스트 전: 테스트 DB 에 마이그레이션 적용 + 모든 데이터 비우기, 테스트 저장소 폴더 비우기
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
-import { repoRoot, testDatabaseUrl } from './test-db.ts';
+import { repoRoot, testDatabaseUrl, TEST_STORAGE_DIR } from './test-db.ts';
 
 export default async function setup() {
   const url = testDatabaseUrl();
@@ -22,4 +23,6 @@ export default async function setup() {
   } finally {
     await prisma.$disconnect();
   }
+
+  await fs.rm(path.join(repoRoot, TEST_STORAGE_DIR), { recursive: true, force: true });
 }

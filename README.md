@@ -52,9 +52,29 @@ http://localhost:5173 에서 회원가입 후 대시보드를 쓸 수 있다. �
 | GET | `/api/projects` | 내 프로젝트 목록 |
 | POST | `/api/projects` | 프로젝트 생성 |
 | GET | `/api/projects/:id` | 프로젝트 상세 (내 것만) |
-| PATCH | `/api/projects/:id` | 제목·설정 저장. `expectedUpdatedAt` 이 서버 값과 다르면 409 + 최신 상태 |
+| PATCH | `/api/projects/:id` | 제목·설정 저장. `expectedRevision` 이 서버 값과 다르면 409 + 최신 상태 |
 | DELETE | `/api/projects/:id` | 삭제 (원본 음원은 남음) |
 | POST | `/api/projects/:id/duplicate` | 복제 (설정·곡 순서 포함) |
+
+## 음악
+
+업로드는 S3 presigned URL 과 같은 3단계라서, 배포 때 저장소만 S3 로 바꾸면 프론트엔드는 그대로다.
+
+1. `POST /api/tracks/upload-url` — 형식(MP3·WAV)·크기(100MB) 확인 후 15분짜리 업로드 주소 발급
+2. 브라우저가 그 주소로 파일을 `PUT` (로컬에서는 HMAC 서명 토큰이 붙은 `/api/storage/upload/:token`, 파일은 `.storage/`)
+3. `POST /api/tracks/complete` — 서버가 파일 내용을 직접 읽어 실제 형식·길이·태그 확인. 가짜 파일은 지운다
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| GET | `/api/tracks` | 내 음악 |
+| GET | `/api/tracks/:id/stream` | 재생 (Range 지원) |
+| DELETE | `/api/tracks/:id` | 삭제 (프로젝트에서 쓰는 중이면 409) |
+| POST | `/api/projects/:id/tracks` | 곡 추가 (끝에 붙임, 최대 50곡) |
+| PATCH | `/api/projects/:id/tracks/reorder` | 순서 변경 (전체 순서, 목록이 바뀌었으면 409) |
+| PATCH | `/api/projects/:id/tracks/:ptId` | 표시 제목·아티스트, 구간, 볼륨, 곡 뒤 무음 |
+| DELETE | `/api/projects/:id/tracks/:ptId` | 프로젝트에서 빼기 (원본은 내 음악에 남음) |
+
+곡 편집은 `updatedAt` 만 바꾸고 `revision` 은 그대로라서, 곡을 추가·정렬해도 디자인 자동 저장과 충돌하지 않는다.
 
 ## 편집기 저장 방식
 
@@ -84,7 +104,7 @@ http://localhost:5173 에서 회원가입 후 대시보드를 쓸 수 있다. �
 1. **기본 환경** — 모노레포, React, Express, PostgreSQL ✓
 2. **회원 시스템** — 가입, 로그인, 세션 쿠키 ✓
 3. **프로젝트 관리** — 생성, 저장, 불러오기, 복제, 삭제, 디자인 편집기 ✓
-4. 음악 관리 — 업로드, 정렬, 구간 자르기
+4. **음악 관리** — 업로드, 정렬, 구간 자르기, 미리듣기 ✓
 5. 편집기 — 배경, 텍스트, 미리보기
 6. 렌더링 — BullMQ + FFmpeg Worker, MP4 다운로드
 7. AWS 배포 — EC2, RDS, S3

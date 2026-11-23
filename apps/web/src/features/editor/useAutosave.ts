@@ -25,7 +25,7 @@ export function useAutosave(state: EditorState, dispatch: Dispatch<EditorAction>
         const { project } = await projectsApi.update(snap.projectId, {
           title: snap.title,
           settings: snap.settings,
-          expectedUpdatedAt: snap.serverUpdatedAt
+          expectedRevision: snap.serverRevision
         });
         dispatch({ type: 'saveSuccess', rev: snap.rev, project });
       } catch (e) {
@@ -45,7 +45,7 @@ export function useAutosave(state: EditorState, dispatch: Dispatch<EditorAction>
       const s = latest.current;
       if (!shouldAutosave(s)) return;
       void projectsApi
-        .update(s.projectId, { title: s.title, settings: s.settings, expectedUpdatedAt: s.serverUpdatedAt }, { keepalive: true })
+        .update(s.projectId, { title: s.title, settings: s.settings, expectedRevision: s.serverRevision }, { keepalive: true })
         .catch(() => undefined);
     }
     function onBeforeUnload(e: BeforeUnloadEvent) {

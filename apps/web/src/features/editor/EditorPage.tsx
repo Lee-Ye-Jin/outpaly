@@ -1,13 +1,27 @@
 import { useCallback, useEffect, useMemo, useReducer, useState, type Dispatch } from 'react';
 import { Link, useParams } from 'react-router';
-import type { ProjectDetail, ProjectDoc, ProjectSettings, ProjectTrackDoc } from '@outpaly/shared';
-import { formatTime, totalDuration } from '@outpaly/editor-core';
+import {
+  MAX_TRACKS_PER_PROJECT,
+  toProjectTrackDoc,
+  type ProjectDetail,
+  type ProjectDoc,
+  type ProjectSettings,
+  type ProjectTrackDoc
+} from '@outpaly/shared';
+import { computeStarts } from '@outpaly/editor-core';
 import { Logo } from '../../components/Logo.tsx';
 import { ApiRequestError, projectsApi } from '../../services/api.ts';
 import { ProjectCanvas } from '../render/ProjectCanvas.tsx';
 import { DesignPanel } from './DesignPanel.tsx';
 import { editorReducer, initEditor, saveStatus, titleError, type EditorAction, type EditorState } from './editor-state.ts';
+import { LibraryDialog } from './LibraryDialog.tsx';
+import { PlaylistPanel } from './PlaylistPanel.tsx';
+import { TrackSettingsPanel } from './TrackSettingsPanel.tsx';
+import { Transport } from './Transport.tsx';
 import { useAutosave } from './useAutosave.ts';
+import { usePlaylistPlayer } from './usePlaylistPlayer.ts';
+import { useProjectTracks } from './useProjectTracks.ts';
+import { useUploads } from './useUploads.ts';
 
 type Load = { kind: 'loading' } | { kind: 'ready'; project: ProjectDetail } | { kind: 'notFound' } | { kind: 'error'; message: string };
 
@@ -71,48 +85,72 @@ const PLACEHOLDER_TRACKS: ProjectTrackDoc[] = [214, 187, 242, 201, 228].map((d, 
   gapAfter: 0
 }));
 
-const NO_TRACKS: ProjectTrackDoc[] = [];
-
 function Editor({ project }: { project: ProjectDetail }) {
   const [state, dispatch] = useReducer(editorReducer, project, initEditor);
   useAutosave(state, dispatch);
-
   const update = useCallback((recipe: (s: ProjectSettings) => ProjectSettings) => dispatch({ type: 'updateSettings', recipe }), []);
-  const tracks = NO_TRACKS; // Phase 4 에서 project_tracks 로 채운다
-  const usingPlaceholder = tracks.length === 0;
 
+  // ---- 곡 ----
+  const pts = useProjectTracks(project.id, project.tracks);
+  const docs = useMemo(() => pts.tracks.map(toProjectTrackDoc), [pts.tracks]);
+  const { add } = pts;
+  const uploads = useUploads(useCallback((uploaded) => add(uploaded.map((t) => t.id)), [add]));
+  const player = usePlaylistPlayer(pts.tracks);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'design' | 'track'>('design');
+  const [libraryOpen, setLibraryOpen] = useState(false);
+
+  const selectedIndex = pts.tracks.findIndex((t) => t.id === selectedId);
+  const selected = selectedIndex >= 0 ? pts.tracks[selectedIndex] : undefined;
+  const starts = useMemo(() => computeStarts(docs), [docs]);
+
+  function selectTrack(id: string) {
+    setSelectedId(id);
+    setTab('track');
+    const i = pts.tracks.findIndex((t) => t.id === id);
+    if (i >= 0) player.seek(starts[i] ?? 0);
+  }
+
+  // ---- 미리보기 ----
+  const usingPlaceholder = docs.length === 0;
   const previewDoc = useMemo<ProjectDoc>(
-    () => ({ ...state.settings, title: state.title, tracks: usingPlaceholder ? PLACEHOLDER_TRACKS : tracks }),
-    [state.settings, state.title, usingPlaceholder, tracks]
+    () => ({ ...state.settings, title: state.title, tracks: usingPlaceholder ? PLACEHOLDER_TRACKS : docs }),
+    [state.settings, state.title, usingPlaceholder, docs]
   );
+  // 재생 위치의 곡을 강조. 재생 전에는 고른 곡
+  const highlight = usingPlaceholder ? 1 : player.index >= 0 ? player.index : selectedIndex;
 
   return (
     <div className="flex min-h-screen flex-col">
-      <TopBar state={state} dispatch={dispatch} />
+      <TopBar state={state} dispatch={dispatch} tracksBusy={pts.busy} />
       {state.conflict && <ConflictBanner state={state} dispatch={dispatch} />}
+      {pts.error && (
+        <div role="alert" className="flex items-center gap-3 border-b border-warn/40 bg-warn/10 px-5 py-2.5 text-sm">
+          <p className="flex-1">{pts.error}</p>
+          <button type="button" onClick={pts.clearError} className="min-h-9 rounded-lg border border-line-strong px-3 hover:bg-panel-2">
+            닫기
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 flex-wrap items-stretch">
-        <section aria-label="플레이리스트" className="flex min-w-0 flex-[1_1_280px] flex-col border-r border-line bg-[#121216] lg:max-w-[340px]">
-          <div className="flex items-baseline justify-between px-5 pt-5 pb-3">
-            <h2 className="text-[15px] font-semibold">플레이리스트</h2>
-            <span className="text-xs text-text-2">{tracks.length}곡</span>
-          </div>
-          <div className="mx-5 rounded-xl border-[1.5px] border-dashed border-line-strong bg-[#16161B] p-4 text-sm text-text-2">
-            <p className="font-medium text-text">음악 업로드는 Phase 4 에서 열려요.</p>
-            <p className="mt-1 text-xs text-text-3">MP3 · WAV 를 끌어다 놓아 곡을 추가하게 돼요.</p>
-          </div>
-          <div className="flex-1" />
-          <div className="flex justify-between border-t border-line px-5 py-3.5 text-sm">
-            <span className="text-text-2">전체 길이</span>
-            <span className="font-semibold tabular-nums">{formatTime(totalDuration(tracks))}</span>
-          </div>
-        </section>
+        <PlaylistPanel
+          tracks={docs}
+          selectedId={selectedId}
+          playingIndex={player.playing ? player.index : -1}
+          uploads={uploads.items}
+          onSelect={selectTrack}
+          onReorder={pts.reorder}
+          onFiles={uploads.start}
+          onDismissUpload={uploads.dismiss}
+          onOpenLibrary={() => setLibraryOpen(true)}
+        />
 
-        <section aria-label="미리보기" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3 p-6">
+        <section aria-label="미리보기" className="flex min-w-0 flex-[999_1_560px] flex-col gap-4 p-6">
           <div className="mx-auto w-full max-w-[1040px]">
             <ProjectCanvas
               doc={previewDoc}
-              current={usingPlaceholder ? 1 : -1}
+              current={highlight}
               className="w-full rounded-[10px] bg-panel-2 shadow-[0_0_0_1px_var(--color-line)]"
               label={`${state.title} 미리보기`}
             />
@@ -123,17 +161,72 @@ function Editor({ project }: { project: ProjectDetail }) {
               </span>
             </p>
           </div>
+          <Transport
+            tracks={docs}
+            playing={player.playing}
+            time={player.time}
+            index={player.index}
+            error={player.error}
+            onToggle={player.toggle}
+            onSeek={player.seek}
+          />
         </section>
 
-        <aside aria-label="디자인" className="min-w-0 flex-[1_1_280px] border-l border-line bg-[#121216] lg:max-w-[340px]">
-          <DesignPanel settings={state.settings} update={update} />
+        <aside aria-label="설정" className="flex min-w-0 flex-[1_1_280px] flex-col border-l border-line bg-[#121216] lg:max-w-[340px]">
+          <div role="tablist" aria-label="설정 패널" className="flex gap-1 border-b border-line p-3">
+            {(
+              [
+                ['design', '디자인'],
+                ['track', '곡 설정']
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                disabled={key === 'track' && !selected}
+                onClick={() => setTab(key)}
+                className={`min-h-10 flex-1 rounded-lg text-[13px] font-semibold disabled:opacity-40 ${
+                  tab === key ? 'bg-[#2A2A34] text-text' : 'text-text-2 hover:text-text'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div role="tabpanel" className="overflow-y-auto">
+            {tab === 'track' && selected ? (
+              <TrackSettingsPanel
+                key={selected.id}
+                pt={selected}
+                index={selectedIndex}
+                onChange={(patch) => pts.update(selected.id, patch)}
+                onPreview={() => player.playFrom(starts[selectedIndex] ?? 0)}
+                onRemove={() => {
+                  pts.remove(selected.id);
+                  setSelectedId(null);
+                  setTab('design');
+                }}
+              />
+            ) : (
+              <DesignPanel settings={state.settings} update={update} />
+            )}
+          </div>
         </aside>
       </div>
+
+      <LibraryDialog
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onAdd={(ids) => void pts.add(ids)}
+        maxAdd={MAX_TRACKS_PER_PROJECT - pts.tracks.length}
+      />
     </div>
   );
 }
 
-function TopBar({ state, dispatch }: { state: EditorState; dispatch: Dispatch<EditorAction> }) {
+function TopBar({ state, dispatch, tracksBusy }: { state: EditorState; dispatch: Dispatch<EditorAction>; tracksBusy: boolean }) {
   const err = titleError(state);
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-[#111115] px-4 py-2.5 sm:px-5">
@@ -157,7 +250,7 @@ function TopBar({ state, dispatch }: { state: EditorState; dispatch: Dispatch<Ed
           err ? 'border-warn' : 'border-transparent'
         }`}
       />
-      <SaveIndicator state={state} dispatch={dispatch} />
+      <SaveIndicator state={state} dispatch={dispatch} tracksBusy={tracksBusy} />
       <div className="flex-1" />
       <button
         type="button"
@@ -171,8 +264,10 @@ function TopBar({ state, dispatch }: { state: EditorState; dispatch: Dispatch<Ed
   );
 }
 
-function SaveIndicator({ state, dispatch }: { state: EditorState; dispatch: Dispatch<EditorAction> }) {
-  const status = saveStatus(state);
+function SaveIndicator({ state, dispatch, tracksBusy }: { state: EditorState; dispatch: Dispatch<EditorAction>; tracksBusy: boolean }) {
+  const designStatus = saveStatus(state);
+  // 디자인은 저장됐어도 곡 편집이 서버로 가는 중이면 "저장 중"
+  const status = designStatus === 'saved' && tracksBusy ? 'saving' : designStatus;
   const text: Record<typeof status, string> = {
     saved: '저장됨',
     dirty: '변경 사항 저장 대기',

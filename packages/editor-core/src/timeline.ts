@@ -48,6 +48,27 @@ export function formatTime(sec: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/** 구간 편집용: 소수 첫째 자리까지. 62.5 → "1:02.5", 3600 → "1:00:00.0" */
+export function formatTimePrecise(sec: number): string {
+  const tenths = Math.round(Math.max(0, sec) * 10);
+  const whole = Math.floor(tenths / 10);
+  return `${formatTime(whole)}.${tenths % 10}`;
+}
+
+/**
+ * 사용자가 입력한 시간 → 초. "1:02.5", "62.5", "1:00:00" 을 받는다. 해석할 수 없으면 null.
+ * 분·초 자리는 60 미만이어야 한다 ("1:75" 는 null).
+ */
+export function parseTimeInput(input: string): number | null {
+  const s = input.trim();
+  if (!/^\d+(:\d{1,2}){0,2}(\.\d+)?$/.test(s)) return null;
+  const [main, frac = ''] = s.split('.');
+  const parts = main!.split(':').map(Number);
+  if (parts.slice(1).some((p) => p >= 60)) return null;
+  const whole = parts.reduce((acc, p) => acc * 60 + p, 0);
+  return whole + (frac ? Number(`0.${frac}`) : 0);
+}
+
 /** 유튜브 설명란에 붙일 타임스탬프 목록 */
 export function timestampsText(
   tracks: readonly (TimingTrack & Pick<ProjectTrackDoc, 'displayTitle' | 'displayArtist'>)[]

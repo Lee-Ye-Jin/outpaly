@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { ProjectDoc, ProjectSummary } from '@outpaly/shared';
+import { formatTime } from '@outpaly/editor-core';
 import { ProjectCanvas } from '../render/ProjectCanvas.tsx';
 
 const dateFmt = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -39,7 +40,7 @@ export function ProjectCard(props: {
         <Link to={`/projects/${p.id}`} className="flex min-w-0 flex-1 flex-col gap-1 py-1 hover:underline-offset-4">
           <span className="truncate font-semibold">{p.title}</span>
           <span className="text-sm text-text-2">
-            {p.trackCount}곡 · {dateFmt.format(new Date(p.updatedAt))}
+            {p.trackCount}곡{p.trackCount > 0 ? ` · ${formatTime(p.totalDuration)}` : ''} · {dateFmt.format(new Date(p.updatedAt))}
           </span>
         </Link>
         <IconButton label={`${p.title} 이름 바꾸기`} onClick={props.onRename}>

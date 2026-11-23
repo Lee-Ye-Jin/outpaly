@@ -13,3 +13,7 @@ coverage/
 tmp/
 spikes/**/out/
 spikes/**/samples/
+
+# 로컬 파일 저장소 (업로드한 음악 등)
+.storage/
+.storage-test/

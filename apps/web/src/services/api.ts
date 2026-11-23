@@ -31,7 +31,7 @@ interface RequestOptions {
   keepalive?: boolean;
 }
 
-async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {

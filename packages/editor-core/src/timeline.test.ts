@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   computeStarts,
   formatTime,
+  formatTimePrecise,
+  parseTimeInput,
   playedDuration,
   timestampsText,
   totalDuration,
@@ -41,6 +43,19 @@ describe('timeline', () => {
     expect(formatTime(0)).toBe('0:00');
     expect(formatTime(214.9)).toBe('3:34');
     expect(formatTime(3760)).toBe('1:02:40');
+  });
+
+  it('구간 편집용 시간 쓰기·읽기', () => {
+    expect(formatTimePrecise(62.54)).toBe('1:02.5');
+    expect(formatTimePrecise(59.96)).toBe('1:00.0');
+    expect(parseTimeInput('1:02.5')).toBe(62.5);
+    expect(parseTimeInput(' 62.5 ')).toBe(62.5);
+    expect(parseTimeInput('1:00:00')).toBe(3600);
+    expect(parseTimeInput('0:05')).toBe(5);
+    expect(parseTimeInput('1:75')).toBeNull();
+    expect(parseTimeInput('abc')).toBeNull();
+    expect(parseTimeInput('')).toBeNull();
+    expect(parseTimeInput('-3')).toBeNull();
   });
 
   it('타임스탬프 목록을 만든다', () => {

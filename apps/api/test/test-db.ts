@@ -28,4 +28,7 @@ export function testDatabaseUrl(): string {
   return url;
 }
 
+/** 테스트가 업로드하는 파일 위치 (개발용 .storage 와 분리) */
+export const TEST_STORAGE_DIR = '.storage-test';
+
 export { root as repoRoot };

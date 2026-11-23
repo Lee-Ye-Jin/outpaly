@@ -12,7 +12,8 @@ export interface EditorState {
   projectId: string;
   title: string;
   settings: ProjectSettings;
-  serverUpdatedAt: string;
+  /** 서버의 revision. 저장할 때 expectedRevision 으로 보낸다 */
+  serverRevision: number;
   rev: number;
   savedRev: number;
   saving: boolean;
@@ -31,7 +32,7 @@ export type EditorAction =
   | { type: 'retry' }
   /** 충돌 시 서버 최신 상태로 다시 시작 (내 변경은 버림) */
   | { type: 'reload'; project: ProjectDetail }
-  /** 충돌 시 내 변경으로 덮어쓰기: 서버 updatedAt 을 받아들이고 다시 저장 */
+  /** 충돌 시 내 변경으로 덮어쓰기: 서버 revision 을 받아들이고 다시 저장 */
   | { type: 'overwrite' };
 
 export function initEditor(project: ProjectDetail): EditorState {
@@ -39,7 +40,7 @@ export function initEditor(project: ProjectDetail): EditorState {
     projectId: project.id,
     title: project.title,
     settings: project.settings,
-    serverUpdatedAt: project.updatedAt,
+    serverRevision: project.revision,
     rev: 0,
     savedRev: 0,
     saving: false,
@@ -65,7 +66,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         saving: false,
         // 저장하는 동안 또 편집했다면 그 변경은 아직 저장 안 됨 → savedRev 는 보낸 rev 까지만
         savedRev: Math.max(state.savedRev, action.rev),
-        serverUpdatedAt: action.project.updatedAt
+        serverRevision: action.project.revision
       };
     case 'saveError':
       return { ...state, saving: false, error: action.message };
@@ -77,7 +78,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return initEditor(action.project);
     case 'overwrite':
       if (!state.conflict) return state;
-      return { ...state, serverUpdatedAt: state.conflict.updatedAt, conflict: null, error: null };
+      return { ...state, serverRevision: state.conflict.revision, conflict: null, error: null };
   }
 }
 

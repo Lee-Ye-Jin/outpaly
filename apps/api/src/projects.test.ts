@@ -12,7 +12,7 @@ afterAll(() => prisma.$disconnect());
 async function newProject(agent: Awaited<ReturnType<typeof signedInAgent>>['agent'], title = '테스트 플레이리스트') {
   const res = await agent.post('/api/projects').send({ title });
   expect(res.status).toBe(201);
-  return res.body.project as { id: string; title: string; updatedAt: string; settings: ReturnType<typeof createDefaultSettings> };
+  return res.body.project as { id: string; title: string; revision: number; updatedAt: string; settings: ReturnType<typeof createDefaultSettings> };
 }
 
 describe('프로젝트 수정 (PATCH)', () => {
@@ -55,24 +55,26 @@ describe('프로젝트 수정 (PATCH)', () => {
     expect((await agent.patch(`/api/projects/${p.id}`).send({ title: '   ' })).status).toBe(400);
   });
 
-  it('expectedUpdatedAt 이 서버 값과 다르면 409 와 최신 상태를 준다 (다른 탭에서 먼저 저장)', async () => {
+  it('expectedRevision 이 서버 값과 다르면 409 와 최신 상태를 준다 (다른 탭에서 먼저 저장)', async () => {
     const { agent } = await signedInAgent(app);
     const p = await newProject(agent);
+    expect(p.revision).toBe(0);
 
-    // 탭 1 이 저장
-    const first = await agent.patch(`/api/projects/${p.id}`).send({ title: '탭 1', expectedUpdatedAt: p.updatedAt });
+    // 탭 1 이 저장 → revision 1
+    const first = await agent.patch(`/api/projects/${p.id}`).send({ title: '탭 1', expectedRevision: 0 });
     expect(first.status).toBe(200);
+    expect(first.body.project.revision).toBe(1);
 
-    // 탭 2 는 예전 updatedAt 을 들고 저장 시도 → 거절, 탭 1 의 내용이 남아 있어야 한다
-    const second = await agent.patch(`/api/projects/${p.id}`).send({ title: '탭 2', expectedUpdatedAt: p.updatedAt });
+    // 탭 2 는 예전 revision 을 들고 저장 시도 → 거절, 탭 1 의 내용이 남아 있어야 한다
+    const second = await agent.patch(`/api/projects/${p.id}`).send({ title: '탭 2', expectedRevision: 0 });
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe('CONFLICT');
     expect(second.body.project.title).toBe('탭 1');
 
-    // 최신 updatedAt 으로 다시 보내면 성공
+    // 최신 revision 으로 다시 보내면 성공
     const retry = await agent
       .patch(`/api/projects/${p.id}`)
-      .send({ title: '탭 2', expectedUpdatedAt: second.body.project.updatedAt });
+      .send({ title: '탭 2', expectedRevision: second.body.project.revision });
     expect(retry.status).toBe(200);
     expect(retry.body.project.title).toBe('탭 2');
   });

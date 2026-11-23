@@ -46,6 +46,9 @@ model Project {
   title     String
   /// ProjectSettings (packages/shared). 곡 목록은 project_tracks 에 따로 저장
   settings  Json
+  /// 제목·settings 를 저장할 때마다 1 증가. 편집기 자동 저장의 충돌 감지에 쓴다.
+  /// (곡 추가·순서 변경은 updatedAt 만 바꾸고 revision 은 그대로 → 디자인 저장과 충돌하지 않음)
+  revision  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

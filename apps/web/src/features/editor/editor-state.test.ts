@@ -6,9 +6,12 @@ const project = (over: Partial<ProjectDetail> = {}): ProjectDetail => ({
   id: 'p1',
   title: '플레이리스트',
   trackCount: 0,
+  totalDuration: 0,
   settings: createDefaultSettings('플레이리스트'),
+  revision: 0,
   createdAt: '2026-11-23T00:00:00.000Z',
   updatedAt: '2026-11-23T00:00:00.000Z',
+  tracks: [],
   ...over
 });
 
@@ -32,9 +35,9 @@ describe('editorReducer', () => {
     const sentRev = s.rev;
     s = editorReducer(s, { type: 'saveStart' });
     s = editorReducer(s, dim(0.6)); // rev 2, 저장 중 편집
-    s = editorReducer(s, { type: 'saveSuccess', rev: sentRev, project: project({ updatedAt: '2026-11-23T00:00:01.000Z' }) });
+    s = editorReducer(s, { type: 'saveSuccess', rev: sentRev, project: project({ revision: 1 }) });
     expect(s.savedRev).toBe(1);
-    expect(s.serverUpdatedAt).toBe('2026-11-23T00:00:01.000Z');
+    expect(s.serverRevision).toBe(1);
     expect(saveStatus(s)).toBe('dirty');
   });
 
@@ -54,16 +57,16 @@ describe('editorReducer', () => {
     expect(shouldAutosave(s)).toBe(true);
   });
 
-  it('충돌: 덮어쓰기는 서버 updatedAt 을 받아 다시 저장하고, 다시 불러오기는 내 변경을 버린다', () => {
+  it('충돌: 덮어쓰기는 서버 revision 을 받아 다시 저장하고, 다시 불러오기는 내 변경을 버린다', () => {
     let s = editorReducer(initEditor(project()), dim(0.5));
     s = editorReducer(s, { type: 'saveStart' });
-    const theirs = project({ title: '다른 탭', updatedAt: '2026-11-23T00:00:09.000Z' });
+    const theirs = project({ title: '다른 탭', revision: 7 });
     s = editorReducer(s, { type: 'saveConflict', project: theirs });
     expect(saveStatus(s)).toBe('conflict');
     expect(shouldAutosave(s)).toBe(false);
 
     const overwritten = editorReducer(s, { type: 'overwrite' });
-    expect(overwritten.serverUpdatedAt).toBe(theirs.updatedAt);
+    expect(overwritten.serverRevision).toBe(7);
     expect(overwritten.settings.background.dim).toBe(0.5);
     expect(shouldAutosave(overwritten)).toBe(true);
 

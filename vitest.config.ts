@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { testDatabaseUrl } from './apps/api/test/test-db.ts';
+import { testDatabaseUrl, TEST_STORAGE_DIR } from './apps/api/test/test-db.ts';
 
 export default defineConfig({
   test: {
@@ -19,7 +19,8 @@ export default defineConfig({
           fileParallelism: false,
           env: {
             NODE_ENV: 'test',
-            DATABASE_URL: testDatabaseUrl()
+            DATABASE_URL: testDatabaseUrl(),
+            STORAGE_DIR: TEST_STORAGE_DIR
           }
         }
       }
