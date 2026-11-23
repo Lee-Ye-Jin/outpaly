@@ -9,5 +9,6 @@ export interface HealthResponse {
 }
 
 export interface ApiError {
-  error: { code: string; message: string };
+  /** field: 검증 실패한 입력 칸 (예: "email") */
+  error: { code: string; message: string; field?: string };
 }

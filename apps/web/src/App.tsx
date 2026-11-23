@@ -1,26 +1,38 @@
-import { HealthCard } from './features/status/HealthCard.tsx';
-import { FramePreview } from './features/editor/FramePreview.tsx';
+import { BrowserRouter, Link, Route, Routes } from 'react-router';
+import { AuthProvider } from './features/auth/AuthContext.tsx';
+import { GuestOnly, RequireAuth } from './features/auth/RouteGuards.tsx';
+import { LoginPage } from './features/auth/LoginPage.tsx';
+import { SignupPage } from './features/auth/SignupPage.tsx';
+import { DashboardPage } from './features/projects/DashboardPage.tsx';
+import { DevPage } from './features/status/DevPage.tsx';
+
+function NotFound() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+      <h1 className="font-display text-2xl font-bold">페이지를 찾을 수 없어요</h1>
+      <Link to="/" className="text-accent hover:underline">
+        내 프로젝트로 가기
+      </Link>
+    </main>
+  );
+}
 
 export function App() {
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center gap-3 border-b border-line bg-[#111115] px-6 py-3">
-        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden>
-          <rect width="28" height="28" rx="7" fill="#FF7A45" />
-          <path d="M11 8.5v11l9-5.5z" fill="#0D0D10" />
-        </svg>
-        <span className="font-display text-lg font-bold">OutPaly</span>
-        <span className="text-sm text-text-3">Playlist Video Studio</span>
-      </header>
-
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 sm:px-6">
-        <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Create. Mix. Play.</h1>
-          <p className="mt-2 text-text-2">Phase 1 · 개발 환경과 기본 구조</p>
-        </div>
-        <HealthCard />
-        <FramePreview />
-      </main>
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route element={<GuestOnly />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+          </Route>
+          <Route element={<RequireAuth />}>
+            <Route path="/" element={<DashboardPage />} />
+          </Route>
+          <Route path="/dev" element={<DevPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

@@ -14,7 +14,12 @@ const Env = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL 이 필요합니다. .env.example 을 .env 로 복사하세요.'),
   API_PORT: z.coerce.number().int().positive().default(4000),
-  WEB_ORIGIN: z.string().url().default('http://localhost:5173')
+  WEB_ORIGIN: z.url().default('http://localhost:5173'),
+  /** 프록시 홉 수 (예: "1"). 로컬 개발에서는 비워 둔다 */
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .transform((v) => (v ? (/^\d+$/.test(v) ? Number(v) : v) : undefined))
 });
 
 const parsed = Env.safeParse(process.env);

@@ -34,7 +34,28 @@ npm run db:seed               # 데모 사용자·프로젝트
 npm run dev                   # API http://localhost:4000 + 웹 http://localhost:5173
 ```
 
-웹 첫 화면에서 API 서버, PostgreSQL, 데이터 상태와 `drawFrame()` 미리보기를 확인할 수 있다.
+http://localhost:5173 에서 회원가입 후 대시보드를 쓸 수 있다. 개발 점검 화면(API·DB 상태, `drawFrame()` 미리보기)은 `/dev`.
+
+## 인증
+
+- 서버 세션 + `HttpOnly; SameSite=Lax` 쿠키 (`op_session`, 30일, 15일 이하 남으면 자동 연장). 프로덕션에서는 `Secure`.
+- DB 에는 세션 토큰의 SHA-256 해시만 저장. 비밀번호는 argon2id.
+- 데이터를 바꾸는 요청은 다른 사이트 `Origin` 이면 403 (CSRF 방어). 로그인·가입은 IP 당 15분 20회 제한.
+- 다른 사용자의 프로젝트는 403 이 아니라 404 (존재 여부를 노출하지 않음).
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/api/auth/register` | 가입 + 로그인 |
+| POST | `/api/auth/login` | 로그인 |
+| POST | `/api/auth/logout` | 로그아웃 |
+| GET | `/api/auth/me` | 현재 사용자 |
+| GET | `/api/projects` | 내 프로젝트 목록 |
+| POST | `/api/projects` | 프로젝트 생성 |
+| GET | `/api/projects/:id` | 프로젝트 상세 (내 것만) |
+
+## 테스트
+
+`npm test` 는 단위 테스트와 API 통합 테스트를 실행한다. API 테스트는 `DATABASE_URL` 의 DB 이름에 `_test` 를 붙인 별도 DB(`outpaly_test`)를 쓰며, 실행 전에 그 DB 를 비운다. 이름이 `_test` 로 끝나지 않으면 실행을 거부한다.
 
 > npm 12+ 는 설치 스크립트를 기본으로 막는다. 이 저장소는 꼭 필요한 패키지(prisma, @prisma/engines, @prisma/client, esbuild)만 `package.json` 의 `allowScripts` 에 허용해 두었다.
 
@@ -51,8 +72,8 @@ npm run dev                   # API http://localhost:4000 + 웹 http://localhost
 
 ## 로드맵
 
-1. **기본 환경** — 모노레포, React, Express, PostgreSQL ← 지금
-2. 회원 시스템 — 가입, 로그인, 세션 쿠키
+1. **기본 환경** — 모노레포, React, Express, PostgreSQL ✓
+2. **회원 시스템** — 가입, 로그인, 세션 쿠키 ✓
 3. 프로젝트 관리 — 생성, 저장, 불러오기
 4. 음악 관리 — 업로드, 정렬, 구간 자르기
 5. 편집기 — 배경, 텍스트, 미리보기
