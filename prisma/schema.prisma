@@ -1,0 +1,178 @@
+// OutPaly DB 스키마. 설계안 "3. 데이터베이스 설계" 기준.
+// 시간은 초(Float) 단위로 저장한다. ProjectDoc 과 같은 단위라 변환이 필요 없다.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  displayName  String?   @map("display_name")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  sessions   Session[]
+  projects   Project[]
+  tracks     Track[]
+  assets     Asset[]
+  renderJobs RenderJob[]
+
+  @@map("users")
+}
+
+/// 서버 세션 (HttpOnly 쿠키). id 에는 토큰 원문이 아니라 해시를 저장한다.
+model Session {
+  id        String   @id
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Project {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  /// ProjectSettings (packages/shared). 곡 목록은 project_tracks 에 따로 저장
+  settings  Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks     ProjectTrack[]
+  renderJobs RenderJob[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("projects")
+}
+
+enum TrackSource {
+  UPLOAD
+}
+
+/// 원본 음원. 같은 음원을 여러 프로젝트에서 쓸 수 있다.
+model Track {
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String      @map("user_id") @db.Uuid
+  title      String
+  artist     String?
+  sourceType TrackSource @default(UPLOAD) @map("source_type")
+  storageKey String      @map("storage_key")
+  mimeType   String      @map("mime_type")
+  sizeBytes  BigInt      @map("size_bytes")
+  /// 초
+  duration   Float
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectTracks ProjectTrack[]
+
+  @@index([userId])
+  @@map("tracks")
+}
+
+/// 프로젝트 안에서의 곡 순서와 편집 설정
+model ProjectTrack {
+  id            String  @id @default(uuid()) @db.Uuid
+  projectId     String  @map("project_id") @db.Uuid
+  trackId       String  @map("track_id") @db.Uuid
+  sortOrder     Int     @map("sort_order")
+  displayTitle  String? @map("display_title")
+  displayArtist String? @map("display_artist")
+  trimStart     Float   @default(0) @map("trim_start")
+  trimEnd       Float?  @map("trim_end")
+  gain          Float   @default(0)
+  gapAfter      Float   @default(0) @map("gap_after")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  track   Track   @relation(fields: [trackId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, sortOrder])
+  @@index([trackId])
+  @@map("project_tracks")
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+}
+
+model Asset {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  type       AssetType
+  storageKey String    @map("storage_key")
+  mimeType   String    @map("mime_type")
+  sizeBytes  BigInt    @map("size_bytes")
+  width      Int?
+  height     Int?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("assets")
+}
+
+enum RenderStatus {
+  QUEUED
+  PREPARING
+  PROCESSING
+  UPLOADING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model RenderJob {
+  id         String       @id @default(uuid()) @db.Uuid
+  projectId  String       @map("project_id") @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  status     RenderStatus @default(QUEUED)
+  /// 0~100
+  progress   Int          @default(0)
+  /// 요청 시점의 ProjectDoc. 렌더링 중 편집해도 결과물이 바뀌지 않는다
+  snapshot   Json
+  error      String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+  startedAt  DateTime?    @map("started_at")
+  finishedAt DateTime?    @map("finished_at")
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outputs RenderOutput[]
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("render_jobs")
+}
+
+model RenderOutput {
+  id          String   @id @default(uuid()) @db.Uuid
+  renderJobId String   @map("render_job_id") @db.Uuid
+  storageKey  String   @map("storage_key")
+  sizeBytes   BigInt   @map("size_bytes")
+  /// 초
+  duration    Float
+  width       Int
+  height      Int
+  /// 유튜브 설명란용 타임스탬프
+  timestamps  String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  renderJob RenderJob @relation(fields: [renderJobId], references: [id], onDelete: Cascade)
+
+  @@index([renderJobId])
+  @@map("render_outputs")
+}

@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+
+/* 목업(OutPaly 편집기 목업)과 같은 색 */
+@theme {
+  --color-ink: #0d0d10;
+  --color-panel: #15151a;
+  --color-panel-2: #1c1c23;
+  --color-line: #26262e;
+  --color-line-strong: #3a3a45;
+  --color-text: #f2f1ee;
+  --color-text-2: #a3a3ae;
+  --color-text-3: #8a8a96;
+  --color-accent: #ff7a45;
+  --color-accent-ink: #140a05;
+  --color-ok: #8fe0b2;
+  --color-warn: #ffb08f;
+
+  --font-sans: 'Inter', 'Noto Sans KR', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Noto Sans KR', sans-serif;
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}

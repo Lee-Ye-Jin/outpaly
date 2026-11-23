@@ -1,0 +1,22 @@
+# 로컬 개발용 PostgreSQL + Redis.
+# 로컬에 PostgreSQL 이 이미 설치돼 있으면 postgres 서비스는 생략하고 redis 만 띄워도 된다:
+#   docker compose up -d redis
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: outpaly
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
