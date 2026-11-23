@@ -1,0 +1,19 @@
+{
+  "name": "outpaly-ffmpeg-spike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "OutPaly 렌더링 실험: 곡별 Canvas 프레임 + 오디오 이어 붙이기 → MP4",
+  "scripts": {
+    "samples": "node src/make-samples.mjs",
+    "render": "node src/render.mjs project.sample.json",
+    "bench": "node src/bench.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.65",
+    "ffmpeg-static": "^5.2.0"
+  },
+  "allowScripts": {
+    "ffmpeg-static@5.3.0": true
+  }
+}

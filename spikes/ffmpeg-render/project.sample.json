@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "title": "Late Night Lo-fi",
+  "output": { "width": 1920, "height": 1080, "fps": 30 },
+  "background": {
+    "file": "samples/background.png",
+    "fit": "cover",
+    "color": "#101014",
+    "dim": 0.3,
+    "blur": 0
+  },
+  "titleLayer": {
+    "visible": true,
+    "text": "Late Night Lo-fi",
+    "subtitle": "공부할 때 틀어두는 플레이리스트",
+    "font": "noto-sans-kr",
+    "size": 84,
+    "color": "#FFFFFF",
+    "position": { "x": 0.05, "y": 0.09 }
+  },
+  "tracklistLayer": {
+    "visible": true,
+    "position": "right",
+    "highlightCurrent": true,
+    "showTimestamps": true,
+    "font": "noto-sans-kr",
+    "size": 27,
+    "color": "#FFFFFF"
+  },
+  "tracks": [
+    {
+      "file": "samples/track1.mp3",
+      "displayTitle": "Morning Static",
+      "displayArtist": "Sample Artist",
+      "trimStart": 0,
+      "trimEnd": null,
+      "gain": 0,
+      "gapAfter": 1
+    },
+    {
+      "file": "samples/track2.mp3",
+      "displayTitle": "비 오는 오후",
+      "displayArtist": "Sample Artist",
+      "trimStart": 2,
+      "trimEnd": 14,
+      "gain": -3,
+      "gapAfter": 0
+    }
+  ]
+}
