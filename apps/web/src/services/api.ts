@@ -6,7 +6,8 @@ import type {
   LoginInput,
   ProjectListResponse,
   ProjectResponse,
-  RegisterInput
+  RegisterInput,
+  UpdateProjectInput
 } from '@outpaly/shared';
 
 export class ApiRequestError extends Error {
@@ -14,13 +15,23 @@ export class ApiRequestError extends Error {
     public status: number,
     public code: string,
     message: string,
-    public field?: string
+    public field?: string,
+    /** 오류 응답 본문 전체 (409 의 최신 project 등) */
+    public body?: unknown
   ) {
     super(message);
   }
 }
 
-async function request<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  signal?: AbortSignal;
+  /** 페이지를 떠나는 중에도 요청을 끝까지 보낸다 (편집기 닫을 때 마지막 저장) */
+  keepalive?: boolean;
+}
+
+async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
@@ -28,7 +39,8 @@ async function request<T>(path: string, init: { method?: string; body?: unknown;
       credentials: 'same-origin',
       headers: init.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: init.signal
+      signal: init.signal,
+      keepalive: init.keepalive
     });
   } catch (e) {
     if (init.signal?.aborted) throw e;
@@ -45,7 +57,8 @@ async function request<T>(path: string, init: { method?: string; body?: unknown;
       res.status,
       err?.code ?? 'HTTP_ERROR',
       err?.message ?? `요청을 처리하지 못했어요 (HTTP ${res.status}).`,
-      err?.field
+      err?.field,
+      data
     );
   }
   return data as T;
@@ -68,8 +81,14 @@ export const authApi = {
   logout: () => request<void>('/api/auth/logout', { method: 'POST' })
 };
 
+const projectPath = (id: string) => `/api/projects/${encodeURIComponent(id)}`;
+
 export const projectsApi = {
   list: (signal?: AbortSignal) => request<ProjectListResponse>('/api/projects', { signal }),
   create: (body: CreateProjectInput) => request<ProjectResponse>('/api/projects', { method: 'POST', body }),
-  get: (id: string, signal?: AbortSignal) => request<ProjectResponse>(`/api/projects/${encodeURIComponent(id)}`, { signal })
+  get: (id: string, signal?: AbortSignal) => request<ProjectResponse>(projectPath(id), { signal }),
+  update: (id: string, body: UpdateProjectInput, opts: { keepalive?: boolean } = {}) =>
+    request<ProjectResponse>(projectPath(id), { method: 'PATCH', body, keepalive: opts.keepalive }),
+  remove: (id: string) => request<void>(projectPath(id), { method: 'DELETE' }),
+  duplicate: (id: string) => request<ProjectResponse>(`${projectPath(id)}/duplicate`, { method: 'POST' })
 };

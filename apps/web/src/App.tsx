@@ -5,6 +5,7 @@ import { LoginPage } from './features/auth/LoginPage.tsx';
 import { SignupPage } from './features/auth/SignupPage.tsx';
 import { DashboardPage } from './features/projects/DashboardPage.tsx';
 import { DevPage } from './features/status/DevPage.tsx';
+import { EditorPage } from './features/editor/EditorPage.tsx';
 
 function NotFound() {
   return (
@@ -28,6 +29,7 @@ export function App() {
           </Route>
           <Route element={<RequireAuth />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/projects/:id" element={<EditorPage />} />
           </Route>
           <Route path="/dev" element={<DevPage />} />
           <Route path="*" element={<NotFound />} />

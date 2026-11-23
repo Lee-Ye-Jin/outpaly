@@ -1,21 +1,33 @@
 import { useEffect, useState } from 'react';
-import type { ProjectSummary } from '@outpaly/shared';
+import { useNavigate } from 'react-router';
+import { CreateProjectInput, type ProjectSummary } from '@outpaly/shared';
 import { AppHeader } from '../../components/AppHeader.tsx';
+import { ConfirmDialog, PromptDialog } from '../../components/Dialog.tsx';
 import { useAuth } from '../auth/AuthContext.tsx';
 import { ApiRequestError, projectsApi } from '../../services/api.ts';
+import { ProjectCard } from './ProjectCard.tsx';
 
 type ListState =
   | { kind: 'loading' }
   | { kind: 'ready'; projects: ProjectSummary[] }
   | { kind: 'error'; message: string };
 
-const dateFmt = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+type Pending =
+  | { kind: 'none' }
+  | { kind: 'rename'; project: ProjectSummary }
+  | { kind: 'delete'; project: ProjectSummary };
+
+const messageOf = (e: unknown, fallback: string) => (e instanceof ApiRequestError ? e.message : fallback);
 
 export function DashboardPage() {
   const { state: auth } = useAuth();
+  const navigate = useNavigate();
   const [list, setList] = useState<ListState>({ kind: 'loading' });
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Pending>({ kind: 'none' });
+  const [dialogBusy, setDialogBusy] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -23,23 +35,71 @@ export function DashboardPage() {
       .list(ctrl.signal)
       .then(({ projects }) => setList({ kind: 'ready', projects }))
       .catch((e: unknown) => {
-        if (ctrl.signal.aborted) return;
-        setList({ kind: 'error', message: e instanceof ApiRequestError ? e.message : '목록을 불러오지 못했어요.' });
+        if (!ctrl.signal.aborted) setList({ kind: 'error', message: messageOf(e, '목록을 불러오지 못했어요.') });
       });
     return () => ctrl.abort();
   }, []);
 
+  const updateList = (fn: (ps: ProjectSummary[]) => ProjectSummary[]) =>
+    setList((prev) => (prev.kind === 'ready' ? { kind: 'ready', projects: fn(prev.projects) } : prev));
+
+  function closeDialog() {
+    setDialog({ kind: 'none' });
+    setDialogError(null);
+    setDialogBusy(false);
+  }
+
   async function onCreate() {
     setCreating(true);
-    setCreateError(null);
+    setNotice(null);
     try {
       const { project } = await projectsApi.create({ title: '새 플레이리스트' });
-      // Phase 3 에서 편집기(/projects/:id)로 이동하도록 바뀐다
-      setList((prev) => (prev.kind === 'ready' ? { kind: 'ready', projects: [project, ...prev.projects] } : prev));
+      navigate(`/projects/${project.id}`);
     } catch (e) {
-      setCreateError(e instanceof ApiRequestError ? e.message : '프로젝트를 만들지 못했어요.');
-    } finally {
+      setNotice(messageOf(e, '프로젝트를 만들지 못했어요.'));
       setCreating(false);
+    }
+  }
+
+  async function onDuplicate(p: ProjectSummary) {
+    setNotice(null);
+    try {
+      const { project } = await projectsApi.duplicate(p.id);
+      updateList((ps) => [project, ...ps]);
+    } catch (e) {
+      setNotice(messageOf(e, '복제하지 못했어요.'));
+    }
+  }
+
+  async function onRenameSubmit(value: string) {
+    if (dialog.kind !== 'rename') return;
+    const parsed = CreateProjectInput.shape.title.safeParse(value);
+    if (!parsed.success) {
+      setDialogError(parsed.error.issues[0]?.message ?? '제목을 확인해 주세요.');
+      return;
+    }
+    setDialogBusy(true);
+    try {
+      const { project } = await projectsApi.update(dialog.project.id, { title: parsed.data });
+      updateList((ps) => [project, ...ps.filter((x) => x.id !== project.id)]);
+      closeDialog();
+    } catch (e) {
+      setDialogError(messageOf(e, '이름을 바꾸지 못했어요.'));
+      setDialogBusy(false);
+    }
+  }
+
+  async function onDeleteConfirm() {
+    if (dialog.kind !== 'delete') return;
+    setDialogBusy(true);
+    try {
+      await projectsApi.remove(dialog.project.id);
+      const id = dialog.project.id;
+      updateList((ps) => ps.filter((x) => x.id !== id));
+      closeDialog();
+    } catch (e) {
+      setDialogError(messageOf(e, '삭제하지 못했어요.'));
+      setDialogBusy(false);
     }
   }
 
@@ -67,13 +127,17 @@ export function DashboardPage() {
           </button>
         </div>
 
-        {createError && (
+        {notice && (
           <p role="alert" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
-            {createError}
+            {notice}
           </p>
         )}
 
-        {list.kind === 'loading' && <p className="text-text-3" role="status">불러오는 중…</p>}
+        {list.kind === 'loading' && (
+          <p className="text-text-3" role="status">
+            불러오는 중…
+          </p>
+        )}
         {list.kind === 'error' && (
           <p role="alert" className="text-warn">
             {list.message}
@@ -86,26 +150,50 @@ export function DashboardPage() {
           </div>
         )}
         {list.kind === 'ready' && list.projects.length > 0 && (
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
             {list.projects.map((p) => (
-              <li key={p.id} className="overflow-hidden rounded-2xl border border-line bg-panel">
-                <div className="relative aspect-video bg-[#3A2E2A]">
-                  <div className="absolute inset-x-0 bottom-0 h-[38%] bg-[#2A211F]" />
-                  <span className="absolute top-3 right-[40%] left-3.5 font-display text-[17px] leading-tight font-bold text-white">
-                    {p.title}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1.5 px-4 pt-3.5 pb-4">
-                  <span className="truncate font-semibold">{p.title}</span>
-                  <span className="text-sm text-text-2">
-                    {p.trackCount}곡 · {dateFmt.format(new Date(p.updatedAt))}
-                  </span>
-                </div>
-              </li>
+              <ProjectCard
+                key={p.id}
+                project={p}
+                onRename={() => setDialog({ kind: 'rename', project: p })}
+                onDuplicate={() => void onDuplicate(p)}
+                onDelete={() => setDialog({ kind: 'delete', project: p })}
+              />
             ))}
           </ul>
         )}
       </main>
+
+      <PromptDialog
+        open={dialog.kind === 'rename'}
+        title="이름 바꾸기"
+        label="프로젝트 이름"
+        initialValue={dialog.kind === 'rename' ? dialog.project.title : ''}
+        confirmLabel="저장"
+        maxLength={120}
+        pending={dialogBusy}
+        error={dialogError}
+        onSubmit={(v) => void onRenameSubmit(v)}
+        onClose={closeDialog}
+      />
+      <ConfirmDialog
+        open={dialog.kind === 'delete'}
+        title="프로젝트를 삭제할까요?"
+        message={
+          dialog.kind === 'delete' ? (
+            <>
+              <strong className="text-text">{dialog.project.title}</strong> 프로젝트와 렌더링 기록이 삭제되고, 되돌릴 수 없어요.
+              업로드한 음악 파일은 내 음악 목록에 남아요.
+            </>
+          ) : null
+        }
+        confirmLabel="삭제"
+        danger
+        pending={dialogBusy}
+        error={dialogError}
+        onConfirm={() => void onDeleteConfirm()}
+        onClose={closeDialog}
+      />
     </div>
   );
 }
