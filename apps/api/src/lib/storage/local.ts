@@ -7,8 +7,9 @@ import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Request, Response } from 'express';
+import { LocalFileStore } from '@outpaly/storage';
 import { HttpError } from '../../middleware/error.ts';
-import type { FileStorage, UploadTargetResult, UploadTargetSpec } from './storage.ts';
+import type { ApiStorage, SendOptions, UploadTargetResult, UploadTargetSpec } from './storage.ts';
 
 interface UploadToken {
   /** key */
@@ -21,21 +22,20 @@ interface UploadToken {
   e: number;
 }
 
-export class LocalStorage implements FileStorage {
+/** RFC 6266: 한글 파일 이름은 filename* 로, 옛 브라우저용 filename 은 ASCII 로 */
+export function contentDisposition(name: string): string {
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
+export class LocalStorage extends LocalFileStore implements ApiStorage {
   constructor(
-    private readonly root: string,
+    root: string,
     private readonly secret: string,
     /** 업로드 PUT 을 받는 API 경로 (예: /api/storage/upload) */
     private readonly uploadBasePath: string
-  ) {}
-
-  /** key → 절대 경로. root 밖으로 나가는 키(../)는 거절 */
-  resolve(key: string): string {
-    const abs = path.resolve(this.root, key);
-    if (!abs.startsWith(path.resolve(this.root) + path.sep)) {
-      throw new HttpError(400, 'BAD_KEY', '잘못된 파일 키예요.');
-    }
-    return abs;
+  ) {
+    super(root);
   }
 
   private sign(payload: string): string {
@@ -102,33 +102,17 @@ export class LocalStorage implements FileStorage {
     return { key: t.k, size };
   }
 
-  async stat(key: string) {
-    try {
-      const s = await fs.stat(this.resolve(key));
-      return s.isFile() ? { size: s.size } : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async withLocalFile<T>(key: string, fn: (p: string) => Promise<T>): Promise<T> {
-    return fn(this.resolve(key));
-  }
-
-  sendFile(res: Response, key: string, contentType: string): Promise<void> {
+  sendFile(res: Response, key: string, opts: SendOptions): Promise<void> {
     const abs = this.resolve(key);
+    const headers: Record<string, string> = { 'Content-Type': opts.contentType, 'Cache-Control': 'private, max-age=3600' };
+    if (opts.downloadName) headers['Content-Disposition'] = contentDisposition(opts.downloadName);
     return new Promise((resolve, reject) => {
       // dotfiles: 'allow' — 저장 폴더가 .storage 라서 기본값(ignore)이면 404 가 된다.
-      // abs 는 서버가 만든 키를 resolve() 로 root 안인지 확인한 경로라 안전하다.
-      const opts = { dotfiles: 'allow' as const, headers: { 'Content-Type': contentType, 'Cache-Control': 'private, max-age=3600' } };
-      res.sendFile(abs, opts, (err) => {
+      // abs 는 resolve() 로 root 안인지 확인한 경로라 안전하다.
+      res.sendFile(abs, { dotfiles: 'allow', headers }, (err) => {
         if (err && !res.headersSent) reject(new HttpError(404, 'FILE_NOT_FOUND', '파일을 찾을 수 없어요.'));
         else resolve();
       });
     });
-  }
-
-  async delete(key: string) {
-    await fs.rm(this.resolve(key), { force: true });
   }
 }

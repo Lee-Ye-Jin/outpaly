@@ -6,6 +6,7 @@ import { SignupPage } from './features/auth/SignupPage.tsx';
 import { DashboardPage } from './features/projects/DashboardPage.tsx';
 import { DevPage } from './features/status/DevPage.tsx';
 import { EditorPage } from './features/editor/EditorPage.tsx';
+import { ExportPage } from './features/export/ExportPage.tsx';
 
 function NotFound() {
   return (
@@ -30,6 +31,7 @@ export function App() {
           <Route element={<RequireAuth />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/projects/:id" element={<EditorPage />} />
+            <Route path="/projects/:id/export" element={<ExportPage />} />
           </Route>
           <Route path="/dev" element={<DevPage />} />
           <Route path="*" element={<NotFound />} />

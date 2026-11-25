@@ -3,5 +3,6 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["src"]
+  // render.test.ts 가 API 앱을 띄워 통합 테스트하므로 API 의 Express 타입 확장도 포함
+  "include": ["src", "../api/src/types"]
 }

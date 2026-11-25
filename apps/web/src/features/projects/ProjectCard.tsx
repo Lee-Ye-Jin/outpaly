@@ -22,6 +22,19 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
+function RenderBadge({ render }: { render: ProjectSummary['latestRender'] }) {
+  if (!render || render.status === 'CANCELLED') return null;
+  const style =
+    render.status === 'COMPLETED'
+      ? 'bg-[#173326] text-ok'
+      : render.status === 'FAILED'
+        ? 'bg-warn/15 text-warn'
+        : 'bg-[#3A2418] text-warn';
+  const label =
+    render.status === 'COMPLETED' ? '렌더링 완료' : render.status === 'FAILED' ? '렌더링 실패' : `제작 중 ${render.progress}%`;
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>{label}</span>;
+}
+
 export function ProjectCard(props: {
   project: ProjectSummary;
   onRename: () => void;
@@ -39,8 +52,9 @@ export function ProjectCard(props: {
       <div className="flex items-start gap-1 py-2.5 pr-2 pl-4">
         <Link to={`/projects/${p.id}`} className="flex min-w-0 flex-1 flex-col gap-1 py-1 hover:underline-offset-4">
           <span className="truncate font-semibold">{p.title}</span>
-          <span className="text-sm text-text-2">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-2">
             {p.trackCount}곡{p.trackCount > 0 ? ` · ${formatTime(p.totalDuration)}` : ''} · {dateFmt.format(new Date(p.updatedAt))}
+            <RenderBadge render={p.latestRender} />
           </span>
         </Link>
         <IconButton label={`${p.title} 이름 바꾸기`} onClick={props.onRename}>

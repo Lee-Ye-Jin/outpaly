@@ -3,7 +3,8 @@
 
 import { computeStarts, formatTime } from '@outpaly/editor-core';
 import type { ProjectDoc } from '@outpaly/shared';
-import { FONT_FAMILIES } from './fonts.ts';
+import { browserFonts, type FontResolver, type FontWeight } from './fonts.ts';
+import type { FontId } from '@outpaly/shared';
 
 const BASE_W = 1920;
 const BASE_H = 1080;
@@ -62,13 +63,19 @@ function hexToRgba(hex: string, alpha: number): string {
  * @param doc      그릴 프로젝트
  * @param current  지금 나오는 곡 인덱스 (강조용, -1 이면 강조 없음)
  * @param bgImage  배경 이미지 (없으면 단색)
+ * @param fonts    글꼴 이름 규칙. 브라우저는 기본값, Worker 는 serverFonts
  */
 export function drawFrame<I extends FrameImage>(
   ctx: FrameContext<I>,
   doc: ProjectDoc,
   current: number,
-  bgImage: I | null
+  bgImage: I | null,
+  fonts: FontResolver = browserFonts
 ): void {
+  const font = (id: FontId, weight: FontWeight, size: number) => {
+    const f = fonts(id, weight);
+    return `${f.weight} ${size}px "${f.family}"`;
+  };
   const k = doc.output.width / BASE_W;
   const { background: bg, titleLayer: tl, tracklistLayer: ll } = doc;
 
@@ -88,22 +95,20 @@ export function drawFrame<I extends FrameImage>(
 
   // 제목
   if (tl.visible) {
-    const family = FONT_FAMILIES[tl.font];
     const x = tl.position.x * BASE_W;
     const y = tl.position.y * BASE_H;
     ctx.fillStyle = tl.color;
-    ctx.font = `700 ${tl.size}px "${family}"`;
+    ctx.font = font(tl.font, 700, tl.size);
     ctx.fillText(ellipsize(ctx, tl.text, BASE_W * 0.5), x, y);
     if (tl.subtitle) {
       ctx.fillStyle = hexToRgba(tl.color, 0.8);
-      ctx.font = `400 ${1.6 * CQW}px "${family}"`;
+      ctx.font = font(tl.font, 400, 1.6 * CQW);
       ctx.fillText(ellipsize(ctx, tl.subtitle, BASE_W * 0.5), x, y + tl.size * 1.05 + 0.8 * CQW);
     }
   }
 
   // 트랙리스트
   if (ll.visible && doc.tracks.length > 0) {
-    const family = FONT_FAMILIES[ll.font];
     const starts = computeStarts(doc.tracks);
     const lineH = ll.size * 1.3 + 0.7 * CQW;
     const boxes = {
@@ -115,19 +120,22 @@ export function drawFrame<I extends FrameImage>(
     const rows = Math.ceil(doc.tracks.length / box.cols);
     const y0 = box.y ?? BASE_H - 5 * CQW - rows * lineH;
     const colW = (box.width - (box.cols - 1) * 3 * CQW) / box.cols;
+    // 타임스탬프 칸 너비는 항상 보통 굵기로 잰다 (강조된 곡의 제목만 밀리지 않게)
+    ctx.font = font(ll.font, 400, ll.size);
+    const tsWidth = ctx.measureText('0:00:00').width * 0.75 + 1.4 * CQW;
 
     doc.tracks.forEach((t, i) => {
       const x = box.x + Math.floor(i / rows) * (colW + 3 * CQW);
       const y = y0 + (i % rows) * lineH;
       const on = ll.highlightCurrent && i === current;
       ctx.fillStyle = on ? HIGHLIGHT_COLOR : hexToRgba(ll.color, 0.86);
-      ctx.font = `${on ? 700 : 400} ${ll.size}px "${family}"`;
+      ctx.font = font(ll.font, on ? 700 : 400, ll.size);
       let tx = x;
       if (ll.showTimestamps) {
         ctx.globalAlpha = 0.85;
         ctx.fillText(formatTime(starts[i] ?? 0), x, y);
         ctx.globalAlpha = 1;
-        tx = x + ctx.measureText('0:00:00').width * 0.75 + 1.4 * CQW;
+        tx = x + tsWidth;
       }
       ctx.fillText(ellipsize(ctx, t.displayTitle, colW - (tx - x)), tx, y);
     });

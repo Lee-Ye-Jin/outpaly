@@ -19,7 +19,7 @@ import {
   type UploadTarget
 } from '@outpaly/shared';
 import { prisma } from '../../lib/prisma.ts';
-import { storage, userPrefix } from '../../lib/storage/index.ts';
+import { storage, trackKeyPrefix } from '../../lib/storage/index.ts';
 import { isUuid, parseBody } from '../../lib/validate.ts';
 import { HttpError } from '../../middleware/error.ts';
 import { currentUser, requireAuth } from '../../middleware/auth.ts';
@@ -30,7 +30,6 @@ export const tracksRouter = Router();
 tracksRouter.use(requireAuth);
 
 const UPLOAD_URL_TTL_SECONDS = 15 * 60;
-const trackKeyPrefix = (userId: string) => `${userPrefix(userId)}tracks/`;
 const notFound = () => new HttpError(404, 'TRACK_NOT_FOUND', '음악을 찾을 수 없어요.');
 
 async function findOwnedTrack(userId: string, id: unknown) {
@@ -108,7 +107,7 @@ tracksRouter.post('/complete', async (req, res) => {
 tracksRouter.get('/:id/stream', async (req, res) => {
   const user = currentUser(req);
   const track = await findOwnedTrack(user.id, req.params.id);
-  await storage.sendFile(res, track.storageKey, track.mimeType);
+  await storage.sendFile(res, track.storageKey, { contentType: track.mimeType });
 });
 
 tracksRouter.delete('/:id', async (req, res) => {
@@ -125,6 +124,15 @@ tracksRouter.delete('/:id', async (req, res) => {
       'TRACK_IN_USE',
       `이 음악을 쓰는 프로젝트가 있어요: ${usedIn.map((p) => p.title).join(', ')}. 프로젝트에서 먼저 빼 주세요.`
     );
+  }
+  // 프로젝트에서는 뺐어도, 대기·진행 중인 렌더가 이 파일을 쓰고 있으면 지우지 않는다
+  const inRender = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*) AS n FROM render_jobs
+     WHERE user_id = ${user.id}::uuid
+       AND status IN ('QUEUED', 'PREPARING', 'PROCESSING', 'UPLOADING')
+       AND position(${track.storageKey} in snapshot::text) > 0`;
+  if (Number(inRender[0]?.n ?? 0) > 0) {
+    throw new HttpError(409, 'TRACK_IN_RENDER', '이 음악으로 영상을 만드는 중이에요. 완료된 뒤 삭제해 주세요.');
   }
   await prisma.track.delete({ where: { id: track.id } });
   await storage.delete(track.storageKey);

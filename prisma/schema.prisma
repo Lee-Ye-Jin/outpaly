@@ -145,9 +145,16 @@ model RenderJob {
   status     RenderStatus @default(QUEUED)
   /// 0~100
   progress   Int          @default(0)
-  /// 요청 시점의 ProjectDoc. 렌더링 중 편집해도 결과물이 바뀌지 않는다
+  /// 요청 시점의 RenderSnapshot (packages/shared). 렌더링 중 편집해도 결과물이 바뀌지 않는다
   snapshot   Json
   error      String?
+  /// Worker 가 이 작업을 가져간 횟수. 서버가 죽어 다시 대기열로 돌아오면 늘어난다
+  attempts        Int       @default(0)
+  /// 처리 중인 Worker 가 주기적으로 갱신. 오래 갱신되지 않으면 Worker 가 죽은 것으로 보고 다시 대기열로
+  heartbeatAt     DateTime? @map("heartbeat_at")
+  workerId        String?   @map("worker_id")
+  /// 처리 중 취소 요청. Worker 가 보고 FFmpeg 를 멈춘다
+  cancelRequested Boolean   @default(false) @map("cancel_requested")
   createdAt  DateTime     @default(now()) @map("created_at")
   startedAt  DateTime?    @map("started_at")
   finishedAt DateTime?    @map("finished_at")

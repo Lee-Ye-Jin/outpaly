@@ -9,6 +9,7 @@ const project = (over: Partial<ProjectDetail> = {}): ProjectDetail => ({
   totalDuration: 0,
   settings: createDefaultSettings('플레이리스트'),
   revision: 0,
+  latestRender: null,
   createdAt: '2026-11-23T00:00:00.000Z',
   updatedAt: '2026-11-23T00:00:00.000Z',
   tracks: [],

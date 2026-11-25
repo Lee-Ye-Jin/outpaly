@@ -122,7 +122,7 @@ function Editor({ project }: { project: ProjectDetail }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <TopBar state={state} dispatch={dispatch} tracksBusy={pts.busy} />
+      <TopBar state={state} dispatch={dispatch} tracksBusy={pts.busy} trackCount={pts.tracks.length} />
       {state.conflict && <ConflictBanner state={state} dispatch={dispatch} />}
       {pts.error && (
         <div role="alert" className="flex items-center gap-3 border-b border-warn/40 bg-warn/10 px-5 py-2.5 text-sm">
@@ -226,7 +226,17 @@ function Editor({ project }: { project: ProjectDetail }) {
   );
 }
 
-function TopBar({ state, dispatch, tracksBusy }: { state: EditorState; dispatch: Dispatch<EditorAction>; tracksBusy: boolean }) {
+function TopBar({
+  state,
+  dispatch,
+  tracksBusy,
+  trackCount
+}: {
+  state: EditorState;
+  dispatch: Dispatch<EditorAction>;
+  tracksBusy: boolean;
+  trackCount: number;
+}) {
   const err = titleError(state);
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-[#111115] px-4 py-2.5 sm:px-5">
@@ -252,14 +262,27 @@ function TopBar({ state, dispatch, tracksBusy }: { state: EditorState; dispatch:
       />
       <SaveIndicator state={state} dispatch={dispatch} tracksBusy={tracksBusy} />
       <div className="flex-1" />
-      <button
-        type="button"
-        disabled
-        title="렌더링은 Phase 6 에서 열려요"
-        className="inline-flex min-h-10 items-center gap-2 rounded-[10px] bg-accent px-4 font-semibold text-accent-ink opacity-50"
-      >
-        MP4 만들기
-      </button>
+      {trackCount > 0 ? (
+        // 편집기를 떠날 때 남은 변경은 keepalive 로 저장된다 (useAutosave, useProjectTracks)
+        <Link
+          to={`/projects/${state.projectId}/export`}
+          className="inline-flex min-h-10 items-center gap-2 rounded-[10px] bg-accent px-4 font-semibold text-accent-ink hover:brightness-110"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+          </svg>
+          MP4 만들기
+        </Link>
+      ) : (
+        <button
+          type="button"
+          disabled
+          title="곡을 추가하면 영상을 만들 수 있어요"
+          className="inline-flex min-h-10 items-center gap-2 rounded-[10px] bg-accent px-4 font-semibold text-accent-ink opacity-50"
+        >
+          MP4 만들기
+        </button>
+      )}
     </header>
   );
 }

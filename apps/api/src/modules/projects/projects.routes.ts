@@ -16,19 +16,23 @@ import {
   type ProjectSummary
 } from '@outpaly/shared';
 import { prisma } from '../../lib/prisma.ts';
+import { storage } from '../../lib/storage/index.ts';
 import { isUuid, parseBody } from '../../lib/validate.ts';
 import { HttpError } from '../../middleware/error.ts';
 import { currentUser, requireAuth } from '../../middleware/auth.ts';
 import { toProjectTrackDto } from '../tracks/dto.ts';
 import { projectTracksRouter } from './project-tracks.routes.ts';
+import { projectRendersRouter } from '../renders/renders.routes.ts';
 
 export const projectsRouter = Router();
 projectsRouter.use(requireAuth);
 projectsRouter.use('/:id/tracks', projectTracksRouter);
+projectsRouter.use('/:id/renders', projectRendersRouter);
 
 /** 목록·상세에 공통으로 필요한 관계 */
 const withTracks = {
-  tracks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], include: { track: true } }
+  tracks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], include: { track: true } },
+  renderJobs: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, progress: true } }
 } as const satisfies Prisma.ProjectInclude;
 type ProjectWithTracks = Prisma.ProjectGetPayload<{ include: typeof withTracks }>;
 
@@ -50,6 +54,7 @@ function toSummary(p: ProjectWithTracks): ProjectSummary {
     ),
     settings: readSettings(p),
     revision: p.revision,
+    latestRender: p.renderJobs[0] ?? null,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString()
   };
@@ -136,9 +141,16 @@ projectsRouter.delete('/:id', async (req, res) => {
   const user = currentUser(req);
   const id = req.params.id;
   if (!isUuid(id)) throw notFound();
-  // project_tracks, render_jobs 는 CASCADE 로 함께 지워진다. 원본 음원(tracks)은 내 음악 목록에 남는다.
+  // project_tracks, render_jobs, render_outputs 는 CASCADE 로 함께 지워진다. 원본 음원(tracks)은 내 음악 목록에 남는다.
+  // 렌더 결과 MP4 파일은 DB 밖에 있으므로 키를 먼저 모아 두었다가 지운다.
+  const outputs = await prisma.renderOutput.findMany({
+    where: { renderJob: { projectId: id, userId: user.id } },
+    select: { storageKey: true }
+  });
   const { count } = await prisma.project.deleteMany({ where: { id, userId: user.id } });
   if (count === 0) throw notFound();
+  // 진행 중이던 렌더는 Worker 가 heartbeat 에서 "lost" 를 받고 멈춘다
+  await Promise.all(outputs.map((o) => storage.delete(o.storageKey).catch((e: unknown) => console.warn('렌더 파일 삭제 실패', o.storageKey, e))));
   res.status(204).end();
 });
 

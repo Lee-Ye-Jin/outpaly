@@ -7,6 +7,7 @@ import { authRouter } from './modules/auth/auth.routes.ts';
 import { projectsRouter } from './modules/projects/projects.routes.ts';
 import { tracksRouter } from './modules/tracks/tracks.routes.ts';
 import { storageRouter } from './modules/storage/storage.routes.ts';
+import { rendersRouter } from './modules/renders/renders.routes.ts';
 import { loadSession } from './middleware/auth.ts';
 import { checkOrigin } from './middleware/origin.ts';
 import { errorHandler, notFound } from './middleware/error.ts';
@@ -26,8 +27,9 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/projects', projectsRouter);
   app.use('/api/tracks', tracksRouter);
+  app.use('/api/renders', rendersRouter);
   app.use('/api/storage', storageRouter); // 로컬 저장소 업로드 (S3 로 바꾸면 쓰지 않음)
-  // Phase 5~: /api/assets, /api/renders
+  // Phase 5: /api/assets
 
   app.use('/api', notFound);
   app.use(errorHandler);

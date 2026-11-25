@@ -12,6 +12,7 @@
     "@node-rs/argon2": "^2.2.2",
     "@outpaly/editor-core": "*",
     "@outpaly/shared": "*",
+    "@outpaly/storage": "*",
     "@prisma/client": "^6.19.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

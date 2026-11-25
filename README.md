@@ -8,11 +8,12 @@
 apps/
   web/          React + Vite + Tailwind  (편집기 화면)
   api/          Express + Prisma         (인증, 프로젝트, 업로드, 렌더 요청)
-  worker/       FFmpeg 렌더링 Worker      (Phase 6, 지금은 골격만)
+  worker/       렌더링 Worker              (PostgreSQL 대기열 → Canvas 프레임 + FFmpeg → MP4)
 packages/
   shared/       ProjectDoc 스키마(zod), API 타입
   editor-core/  곡 시작 시각·전체 길이·타임스탬프 계산
   render-core/  drawFrame() — 브라우저 미리보기와 서버 렌더가 같이 쓰는 프레임 그리기
+  storage/      파일 저장소 (API·Worker 공용, 지금은 로컬 디스크)
 prisma/         DB 스키마, 시드
 spikes/
   ffmpeg-render/  렌더링 파이프라인 실험 (1시간 영상 약 3.5분, 길이 오차 0)
@@ -31,7 +32,7 @@ cp .env.example .env          # DATABASE_URL 의 비밀번호를 내 PostgreSQL 
 npm run db:migrate            # DB 만들기 + 테이블 생성 (처음 한 번)
 npm run db:seed               # 데모 사용자·프로젝트
 
-npm run dev                   # API http://localhost:4000 + 웹 http://localhost:5173
+npm run dev                   # API :4000 + 웹 http://localhost:5173 + 렌더링 Worker
 ```
 
 http://localhost:5173 에서 회원가입 후 대시보드를 쓸 수 있다. 개발 점검 화면(API·DB 상태, `drawFrame()` 미리보기)은 `/dev`.
@@ -76,6 +77,26 @@ http://localhost:5173 에서 회원가입 후 대시보드를 쓸 수 있다. �
 
 곡 편집은 `updatedAt` 만 바꾸고 `revision` 은 그대로라서, 곡을 추가·정렬해도 디자인 자동 저장과 충돌하지 않는다.
 
+## 렌더링
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/api/renders` | 렌더 요청. 그 순간의 프로젝트를 스냅샷으로 저장. 같은 프로젝트가 진행 중이면 409 + 그 작업 |
+| GET | `/api/renders/:id` | 상태(QUEUED → PREPARING → PROCESSING → UPLOADING → COMPLETED / FAILED / CANCELLED)·진행률 |
+| POST | `/api/renders/:id/cancel` | 취소. 대기 중이면 바로, 처리 중이면 Worker 가 FFmpeg 를 멈춘다 |
+| GET | `/api/renders/:id/download` | 완성 MP4 (`프로젝트 이름.mp4`) |
+| GET | `/api/projects/:id/renders` | 프로젝트의 최근 렌더 10개 |
+
+**대기열은 Redis 가 아니라 PostgreSQL**(`render_jobs`)이다. Worker 는 `FOR UPDATE SKIP LOCKED` 로 작업을 하나씩 가져가므로 여러 대를 띄워도 된다. 처리 중에는 5초마다 heartbeat 를 남기고, 60초 동안 없으면 다른 Worker 가 다시 대기열로 돌린다 (최대 3번 시도 후 FAILED).
+
+**파이프라인** (`apps/worker/src/render/pipeline.ts`)
+
+1. 곡마다 `drawFrame()` 으로 PNG 한 장 (Noto Sans/Serif KR 고정 굵기 TTF — 가변 폰트는 굵기가 틀리게 나와서 쓰지 않음)
+2. 오디오(곡별 구간·볼륨·무음, 계산한 길이에 정확히 맞춤)와 영상(x264 stillimage)을 **동시에** 인코딩
+3. `-c copy` 로 합치고 `+faststart`
+
+측정값 (Ryzen 5 7600): 1분 영상 2.7초. 1시간 영상은 실험(spikes, 오디오·영상 순차 인코딩)에서 약 3.5분이었고, 동시 인코딩을 적용한 뒤 1시간 분량은 아직 다시 재지 않았다.
+
 ## 편집기 저장 방식
 
 - 편집이 멈추고 0.8초 뒤 자동 저장. 저장 중에 또 고치면 끝난 뒤 다시 저장한다.
@@ -105,6 +126,6 @@ http://localhost:5173 에서 회원가입 후 대시보드를 쓸 수 있다. �
 2. **회원 시스템** — 가입, 로그인, 세션 쿠키 ✓
 3. **프로젝트 관리** — 생성, 저장, 불러오기, 복제, 삭제, 디자인 편집기 ✓
 4. **음악 관리** — 업로드, 정렬, 구간 자르기, 미리듣기 ✓
-5. 편집기 — 배경, 텍스트, 미리보기
-6. 렌더링 — BullMQ + FFmpeg Worker, MP4 다운로드
+5. 편집기 — 배경 이미지, 텍스트 꾸미기
+6. **렌더링** — PostgreSQL 대기열 + FFmpeg Worker, MP4 다운로드 ✓
 7. AWS 배포 — EC2, RDS, S3

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ProjectSettings } from './project-doc.ts';
 import type { ProjectTrackDto } from './tracks.ts';
+import type { RenderStatus } from './renders.ts';
 
 const Title = z
   .string({ error: '제목을 입력해 주세요.' })
@@ -35,6 +36,8 @@ export interface ProjectSummary {
   settings: ProjectSettings;
   /** 제목·설정 저장 횟수. 충돌 감지용 */
   revision: number;
+  /** 가장 최근 렌더 작업 (대시보드 배지) */
+  latestRender: { id: string; status: RenderStatus; progress: number } | null;
   createdAt: string;
   updatedAt: string;
 }
