@@ -29,16 +29,31 @@ export interface FrameContext<I extends FrameImage = FrameImage> {
   fillText(text: string, x: number, y: number): void;
   measureText(text: string): { width: number };
   drawImage(image: I, dx: number, dy: number, dw: number, dh: number): void;
+  shadowColor: string;
+  shadowBlur: number;
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  /** 있으면 그림자 크기를 실제 픽셀 비율에 맞춘다 (shadowBlur·offset 은 scale() 의 영향을 받지 않음) */
+  getTransform?(): { a: number; b: number };
 }
 
-function drawBackgroundImage<I extends FrameImage>(ctx: FrameContext<I>, img: I, fit: 'cover' | 'contain') {
-  const scale =
-    fit === 'contain'
-      ? Math.min(BASE_W / img.width, BASE_H / img.height)
-      : Math.max(BASE_W / img.width, BASE_H / img.height);
-  const w = img.width * scale;
-  const h = img.height * scale;
-  ctx.drawImage(img, (BASE_W - w) / 2, (BASE_H - h) / 2, w, h);
+/**
+ * 배경 이미지를 그릴 위치·크기 (1920x1080 좌표).
+ * cover: 화면을 꽉 채우고 넘치는 쪽을 자른다. contain: 이미지 전체가 보인다.
+ * zoom 으로 더 키우고, focus 로 화면보다 큰 쪽에서 어디를 보일지 정한다 (0.5 = 가운데).
+ */
+export function backgroundRect(
+  img: FrameImage,
+  bg: { fit: 'cover' | 'contain'; zoom: number; focusX: number; focusY: number },
+  frame = { width: BASE_W, height: BASE_H }
+) {
+  const fitScale =
+    bg.fit === 'contain'
+      ? Math.min(frame.width / img.width, frame.height / img.height)
+      : Math.max(frame.width / img.width, frame.height / img.height);
+  const w = img.width * fitScale * bg.zoom;
+  const h = img.height * fitScale * bg.zoom;
+  return { x: (frame.width - w) * bg.focusX, y: (frame.height - h) * bg.focusY, w, h };
 }
 
 function ellipsize(ctx: Pick<FrameContext, 'measureText'>, text: string, maxWidth: number): string {
@@ -82,10 +97,29 @@ export function drawFrame<I extends FrameImage>(
   ctx.save();
   ctx.scale(k, k);
 
+  // 그림자 크기는 변환(scale)을 따르지 않으므로 실제 픽셀 비율을 곱한다 (썸네일에서 그림자가 번지지 않게)
+  const t = ctx.getTransform?.();
+  const px = t ? Math.hypot(t.a, t.b) : k;
+  const shadow = (on: boolean, size: number) => {
+    if (on) {
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = size * 0.18 * px;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = size * 0.04 * px;
+    } else {
+      ctx.shadowColor = 'rgba(0,0,0,0)';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+    }
+  };
+
   // 배경
   ctx.fillStyle = bg.color;
   ctx.fillRect(0, 0, BASE_W, BASE_H);
-  if (bgImage) drawBackgroundImage(ctx, bgImage, bg.fit);
+  if (bgImage) {
+    const r = backgroundRect(bgImage, bg);
+    ctx.drawImage(bgImage, r.x, r.y, r.w, r.h);
+  }
   if (bg.dim > 0) {
     ctx.fillStyle = `rgba(0,0,0,${bg.dim})`;
     ctx.fillRect(0, 0, BASE_W, BASE_H);
@@ -97,6 +131,7 @@ export function drawFrame<I extends FrameImage>(
   if (tl.visible) {
     const x = tl.position.x * BASE_W;
     const y = tl.position.y * BASE_H;
+    shadow(tl.shadow, tl.size);
     ctx.fillStyle = tl.color;
     ctx.font = font(tl.font, 700, tl.size);
     ctx.fillText(ellipsize(ctx, tl.text, BASE_W * 0.5), x, y);
@@ -123,6 +158,7 @@ export function drawFrame<I extends FrameImage>(
     // 타임스탬프 칸 너비는 항상 보통 굵기로 잰다 (강조된 곡의 제목만 밀리지 않게)
     ctx.font = font(ll.font, 400, ll.size);
     const tsWidth = ctx.measureText('0:00:00').width * 0.75 + 1.4 * CQW;
+    shadow(ll.shadow, ll.size);
 
     doc.tracks.forEach((t, i) => {
       const x = box.x + Math.floor(i / rows) * (colW + 3 * CQW);

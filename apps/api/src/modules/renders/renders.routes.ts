@@ -107,10 +107,19 @@ rendersRouter.post('/', async (req, res) => {
     const parsed = ProjectSettings.safeParse(project.settings);
     const settings = parsed.success ? parsed.data : createDefaultSettings(project.title);
     const doc: ProjectDoc = { ...settings, title: project.title, tracks: project.tracks.map((t) => toProjectTrackDoc(toProjectTrackDto(t))) };
+
+    // 배경 이미지: 설정에 있는데 지워졌으면(있으면 안 되지만) 단색으로 만들지 않고 알린다
+    let background: RenderSnapshot['background'] = null;
+    if (settings.background.assetId) {
+      const asset = await tx.asset.findFirst({ where: { id: settings.background.assetId, userId: user.id } });
+      if (!asset) throw new HttpError(400, 'BACKGROUND_MISSING', '배경 이미지를 찾을 수 없어요. 편집기에서 배경을 다시 골라 주세요.');
+      background = { storageKey: asset.storageKey, mimeType: asset.mimeType };
+    }
     const snapshot: RenderSnapshot = {
       version: 1,
       doc,
-      sources: Object.fromEntries(project.tracks.map((t) => [t.id, { storageKey: t.track.storageKey, mimeType: t.track.mimeType }]))
+      sources: Object.fromEntries(project.tracks.map((t) => [t.id, { storageKey: t.track.storageKey, mimeType: t.track.mimeType }])),
+      background
     };
 
     const job = await tx.renderJob.create({

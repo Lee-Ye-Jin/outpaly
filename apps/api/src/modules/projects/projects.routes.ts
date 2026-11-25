@@ -23,6 +23,7 @@ import { currentUser, requireAuth } from '../../middleware/auth.ts';
 import { toProjectTrackDto } from '../tracks/dto.ts';
 import { projectTracksRouter } from './project-tracks.routes.ts';
 import { projectRendersRouter } from '../renders/renders.routes.ts';
+import { findOwnedAsset } from '../assets/assets.routes.ts';
 
 export const projectsRouter = Router();
 projectsRouter.use(requireAuth);
@@ -107,6 +108,12 @@ projectsRouter.patch('/:id', async (req, res) => {
   const id = req.params.id;
   if (!isUuid(id)) throw notFound();
   const input = parseBody(UpdateProjectInput, req.body);
+
+  // 배경 이미지는 내 것만 (남의 이미지 id 를 넣어 그 사람의 사진으로 영상을 만들지 못하게)
+  const assetId = input.settings?.background.assetId;
+  if (assetId && !(await findOwnedAsset(user.id, assetId))) {
+    throw new HttpError(400, 'VALIDATION', '배경 이미지를 찾을 수 없어요. 다시 골라 주세요.', 'settings.background.assetId');
+  }
 
   // 조건부 갱신: expectedRevision 이 있으면 서버 값과 같을 때만 쓴다 (낙관적 동시성 제어)
   const result = await prisma.project.updateMany({

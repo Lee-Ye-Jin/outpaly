@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import type { ProjectDoc } from './project-doc.ts';
+import type { RenderBackgroundSource } from './assets.ts';
 
 export const RENDER_STATUSES = ['QUEUED', 'PREPARING', 'PROCESSING', 'UPLOADING', 'COMPLETED', 'FAILED', 'CANCELLED'] as const;
 export type RenderStatus = (typeof RENDER_STATUSES)[number];
@@ -33,6 +34,8 @@ export interface RenderSnapshot {
   doc: ProjectDoc;
   /** project_tracks.id → 원본 파일 */
   sources: Record<string, { storageKey: string; mimeType: string }>;
+  /** 배경 이미지 원본 (없으면 단색). Phase 5 이전 스냅샷에는 이 칸이 없다 */
+  background?: RenderBackgroundSource | null;
 }
 
 export const CreateRenderInput = z.object({

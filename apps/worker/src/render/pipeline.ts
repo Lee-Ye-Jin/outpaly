@@ -27,8 +27,6 @@ export interface PipelineContext {
   signal?: AbortSignal;
   /** phase 안에서의 진행률 0~1 */
   onProgress?: (phase: RenderPhase, ratio: number) => void;
-  /** 배경 이미지 (Phase 5). 없으면 단색 */
-  backgroundFile?: string | null;
 }
 
 export interface PipelineResult {
@@ -70,7 +68,15 @@ export async function renderSnapshot(snapshot: RenderSnapshot, ctx: PipelineCont
     inputs.push(await ctx.store.withLocalFile(src.storageKey, async (p) => p));
   }
 
-  const bg: Image | null = ctx.backgroundFile ? await loadImage(ctx.backgroundFile) : null;
+  // 배경 이미지: 업로드 때 회전 반영·메타데이터 제거를 마친 파일이라 브라우저 미리보기와 같은 모습이다
+  let bg: Image | null = null;
+  if (snapshot.background) {
+    const { storageKey } = snapshot.background;
+    if (!(await ctx.store.stat(storageKey))) {
+      throw new RenderInputError('배경 이미지 파일을 찾을 수 없어요. 편집기에서 배경을 다시 골라 주세요.');
+    }
+    bg = await ctx.store.withLocalFile(storageKey, (p) => loadImage(p));
+  }
   const canvas = createCanvas(width, height);
   const c2d = canvas.getContext('2d') as unknown as FrameContext<Image>;
   const frames: string[] = [];

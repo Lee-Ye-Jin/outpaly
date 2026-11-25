@@ -4,7 +4,7 @@
 import type { Response } from 'express';
 import type { FileStore } from '@outpaly/storage';
 
-export { userPrefix, trackKeyPrefix, renderKey } from '@outpaly/storage';
+export { userPrefix, trackKeyPrefix, assetKeyPrefix, renderKey } from '@outpaly/storage';
 
 export interface UploadTargetSpec {
   key: string;

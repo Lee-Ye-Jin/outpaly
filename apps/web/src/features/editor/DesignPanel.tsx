@@ -1,5 +1,6 @@
 import type { FontId, ProjectSettings } from '@outpaly/shared';
 import { ColorInput, Range, Section, Segmented, Select, TextInput, Toggle } from './controls.tsx';
+import { BackgroundSection } from './BackgroundSection.tsx';
 
 type Update = (recipe: (s: ProjectSettings) => ProjectSettings) => void;
 
@@ -7,7 +8,6 @@ const FONT_OPTIONS: { value: FontId; label: string }[] = [
   { value: 'noto-sans-kr', label: 'Noto Sans KR (고딕)' },
   { value: 'noto-serif-kr', label: 'Noto Serif KR (명조)' }
 ];
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 const px = (v: number) => `${v}px`;
 
 export function DesignPanel({ settings: s, update }: { settings: ProjectSettings; update: Update }) {
@@ -35,11 +35,7 @@ export function DesignPanel({ settings: s, update }: { settings: ProjectSettings
         />
       </Section>
 
-      <Section title="배경">
-        <ColorInput label="배경색" value={s.background.color} onChange={(color) => bg({ color })} />
-        <Range label="어둡게" value={s.background.dim} min={0} max={0.8} step={0.05} format={pct} onChange={(dim) => bg({ dim })} />
-        <p className="rounded-lg bg-panel-2 px-3 py-2 text-xs text-text-2">배경 이미지 업로드는 Phase 5 에서 추가돼요.</p>
-      </Section>
+      <BackgroundSection bg={s.background} onChange={bg} />
 
       <Section title="제목">
         <Toggle label="화면에 제목 표시" checked={s.titleLayer.visible} onChange={(visible) => title({ visible })} />
@@ -54,6 +50,7 @@ export function DesignPanel({ settings: s, update }: { settings: ProjectSettings
         <Select label="글꼴" value={s.titleLayer.font} options={FONT_OPTIONS} onChange={(font) => title({ font })} />
         <Range label="크기" value={s.titleLayer.size} min={24} max={200} step={2} format={px} onChange={(size) => title({ size })} />
         <ColorInput label="색" value={s.titleLayer.color} onChange={(color) => title({ color })} />
+        <Toggle label="글자 그림자 (밝은 배경에서 잘 보이게)" checked={s.titleLayer.shadow} onChange={(shadow) => title({ shadow })} />
       </Section>
 
       <Section title="트랙리스트">
@@ -73,6 +70,7 @@ export function DesignPanel({ settings: s, update }: { settings: ProjectSettings
         <Select label="글꼴" value={s.tracklistLayer.font} options={FONT_OPTIONS} onChange={(font) => list({ font })} />
         <Range label="크기" value={s.tracklistLayer.size} min={14} max={64} step={1} format={px} onChange={(size) => list({ size })} />
         <ColorInput label="색" value={s.tracklistLayer.color} onChange={(color) => list({ color })} />
+        <Toggle label="글자 그림자" checked={s.tracklistLayer.shadow} onChange={(shadow) => list({ shadow })} />
       </Section>
     </div>
   );

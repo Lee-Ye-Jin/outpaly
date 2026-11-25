@@ -10,7 +10,9 @@ import { PrismaClient } from '@prisma/client';
 import { LocalFileStore } from '@outpaly/storage';
 import { createApp } from '../../api/src/app.ts';
 import { env } from '../../api/src/config/env.ts';
-import { makeWav, signedInAgent, uploadTrack } from '../../api/test/helpers.ts';
+import { makeImage, makeWav, signedInAgent, uploadAsset, uploadTrack } from '../../api/test/helpers.ts';
+import { spawn } from 'node:child_process';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { registerFonts } from './render/fonts.ts';
 import { probeDuration, RenderCancelledError } from './render/ffmpeg.ts';
 import { renderSnapshot } from './render/pipeline.ts';
@@ -94,6 +96,64 @@ describe('렌더링 (완료 기준)', () => {
     const done = (await agent.get(`/api/renders/${body.render.id}`)).body.render;
     expect(done.status).toBe('COMPLETED');
     expect(done.output.duration).toBeCloseTo(6, 1);
+  });
+});
+
+describe('배경 이미지 (Phase 5)', () => {
+  it('배경으로 고른 이미지가 MP4 화면에 그려진다', async () => {
+    const { agent } = await signedInAgent(app);
+    const { projectId } = await projectWithTracks(agent);
+    const asset = (await uploadAsset(agent, await makeImage('png', 64, 36, '#ff0000'), 'image/png')).body.asset;
+    const p = (await agent.get(`/api/projects/${projectId}`)).body.project;
+    const settings = {
+      ...p.settings,
+      background: { ...p.settings.background, assetId: asset.id, dim: 0 },
+      titleLayer: { ...p.settings.titleLayer, visible: false },
+      tracklistLayer: { ...p.settings.tracklistLayer, visible: false }
+    };
+    await agent.patch(`/api/projects/${projectId}`).send({ settings }).expect(200);
+
+    const { body } = await agent.post('/api/renders').send({ projectId }).expect(201);
+    await worker.runOnce();
+    const done = (await agent.get(`/api/renders/${body.render.id}`)).body.render;
+    expect(done.status).toBe('COMPLETED');
+
+    // 1초 지점 화면을 뽑아 가운데 픽셀이 빨간색인지 확인 (H.264 압축 오차를 감안)
+    const out = await prisma.renderOutput.findFirstOrThrow({ where: { renderJobId: body.render.id } });
+    const png = path.join(os.tmpdir(), `outpaly-bg-${process.pid}.png`);
+    await store.withLocalFile(out.storageKey, (mp4) =>
+      new Promise<void>((resolve, reject) => {
+        const p2 = spawn(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-ss', '1', '-i', mp4, '-frames:v', '1', png]);
+        p2.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
+      })
+    );
+    const img = await loadImage(png);
+    const c = createCanvas(img.width, img.height);
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const [r, gr, b] = g.getImageData(960, 540, 1, 1).data;
+    expect(r).toBeGreaterThan(200);
+    expect(gr).toBeLessThan(50);
+    expect(b).toBeLessThan(50);
+    await fs.rm(png, { force: true });
+  });
+
+  it('배경 이미지 파일이 사라졌으면 FAILED 와 이유를 남긴다', async () => {
+    const { agent } = await signedInAgent(app);
+    const { projectId } = await projectWithTracks(agent);
+    const asset = (await uploadAsset(agent, await makeImage('png', 64, 36), 'image/png')).body.asset;
+    const p = (await agent.get(`/api/projects/${projectId}`)).body.project;
+    await agent
+      .patch(`/api/projects/${projectId}`)
+      .send({ settings: { ...p.settings, background: { ...p.settings.background, assetId: asset.id } } })
+      .expect(200);
+    const { body } = await agent.post('/api/renders').send({ projectId }).expect(201);
+    const a = await prisma.asset.findUniqueOrThrow({ where: { id: asset.id } });
+    await store.delete(a.storageKey);
+    await worker.runOnce();
+    const r = (await agent.get(`/api/renders/${body.render.id}`)).body.render;
+    expect(r.status).toBe('FAILED');
+    expect(r.error).toContain('배경 이미지');
   });
 });
 

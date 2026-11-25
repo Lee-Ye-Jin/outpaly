@@ -18,6 +18,7 @@ export class BadKeyError extends Error {}
 /** 사용자별 키. 다른 사용자의 키를 쓰지 못하게 접두사를 확인한다 */
 export const userPrefix = (userId: string) => `users/${userId}/`;
 export const trackKeyPrefix = (userId: string) => `${userPrefix(userId)}tracks/`;
+export const assetKeyPrefix = (userId: string) => `${userPrefix(userId)}assets/`;
 export const renderKey = (userId: string, jobId: string) => `${userPrefix(userId)}renders/${jobId}.mp4`;
 
 export class LocalFileStore implements FileStore {

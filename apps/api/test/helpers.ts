@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import type { Express } from 'express';
 import { expect } from 'vitest';
+import { createCanvas } from '@napi-rs/canvas';
 
 let seq = 0;
 const run = Date.now().toString(36);
@@ -52,4 +53,42 @@ export async function uploadTrack(agent: Agent, body: Buffer, mimeType: string, 
   const put = await agent.put(target.body.url).set(target.body.headers).send(body);
   expect(put.status).toBe(204);
   return agent.post('/api/tracks/complete').send({ key: target.body.key, filename });
+}
+
+// ---------- 이미지 ----------
+
+/** 단색 이미지 */
+export async function makeImage(format: 'png' | 'jpeg' | 'webp', width: number, height: number, color = '#ff0000'): Promise<Buffer> {
+  const c = createCanvas(width, height);
+  const g = c.getContext('2d');
+  g.fillStyle = color;
+  g.fillRect(0, 0, width, height);
+  return format === 'png' ? c.encode('png') : format === 'jpeg' ? c.encode('jpeg', 95) : c.encode('webp', 95);
+}
+
+/** JPEG 의 SOI 뒤에 EXIF(APP1)를 끼워 넣는다: orientation 과, 개인정보 예시로 아무 문자열(GPS 대신) */
+export function withExif(jpeg: Buffer, orientation: number): Buffer {
+  const tiff = Buffer.alloc(26);
+  tiff.write('II', 0, 'ascii');
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(8, 4);
+  tiff.writeUInt16LE(1, 8);
+  tiff.writeUInt16LE(0x0112, 10);
+  tiff.writeUInt16LE(3, 12);
+  tiff.writeUInt32LE(1, 14);
+  tiff.writeUInt16LE(orientation, 18);
+  tiff.writeUInt32LE(0, 22);
+  const payload = Buffer.concat([Buffer.from('Exif\0\0', 'binary'), tiff, Buffer.from('SECRET-LOCATION')]);
+  const seg = Buffer.alloc(4);
+  seg.writeUInt16BE(0xffe1, 0);
+  seg.writeUInt16BE(payload.length + 2, 2);
+  return Buffer.concat([jpeg.subarray(0, 2), seg, payload, jpeg.subarray(2)]);
+}
+
+/** 이미지 업로드 3단계. complete 응답을 돌려준다 */
+export async function uploadAsset(agent: Agent, body: Buffer, mimeType: string, filename = 'bg.png') {
+  const target = await agent.post('/api/assets/upload-url').send({ filename, mimeType, sizeBytes: body.length });
+  expect(target.status).toBe(201);
+  await agent.put(target.body.url).set(target.body.headers).send(body).expect(204);
+  return agent.post('/api/assets/complete').send({ key: target.body.key });
 }
