@@ -17,7 +17,8 @@ import { registerFonts } from './render/fonts.ts';
 import { probeDuration, RenderCancelledError } from './render/ffmpeg.ts';
 import { renderSnapshot } from './render/pipeline.ts';
 import { RenderWorker } from './worker.ts';
-import type { RenderSnapshot } from '@outpaly/shared';
+import { createDefaultSettings, FONT_IDS, type FontId, type RenderSnapshot } from '@outpaly/shared';
+import { drawFrame, serverFonts, type FrameContext } from '@outpaly/render-core';
 
 const ffmpegPath = ffmpegStatic as unknown as string;
 const app = createApp();
@@ -96,6 +97,97 @@ describe('렌더링 (완료 기준)', () => {
     const done = (await agent.get(`/api/renders/${body.render.id}`)).body.render;
     expect(done.status).toBe('COMPLETED');
     expect(done.output.duration).toBeCloseTo(6, 1);
+  });
+});
+
+describe('해상도 (720p)', () => {
+  /** MP4 의 영상 해상도 */
+  function probeSize(file: string): Promise<[number, number]> {
+    return new Promise((resolve, reject) => {
+      const p = spawn(ffmpegPath, ['-hide_banner', '-i', file]);
+      let err = '';
+      p.stderr.on('data', (d: Buffer) => (err += d.toString()));
+      p.on('close', () => {
+        const m = err.match(/Video:.*?, (\d{3,5})x(\d{3,5})/);
+        if (m) resolve([Number(m[1]), Number(m[2])]);
+        else reject(new Error('해상도를 읽지 못함'));
+      });
+    });
+  }
+
+  /** 1초 지점 화면을 640x360 RGB 로 (두 해상도를 같은 크기에서 비교) */
+  function frameRgb(file: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const p = spawn(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-ss', '1', '-i', file, '-frames:v', '1', '-vf', 'scale=640:360', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1']);
+      const chunks: Buffer[] = [];
+      p.stdout.on('data', (d: Buffer) => chunks.push(d));
+      p.on('close', (code) => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`ffmpeg ${code}`))));
+    });
+  }
+
+  const meanDiff = (a: Buffer, b: Buffer) => {
+    let sum = 0;
+    for (let i = 0; i < a.length; i++) sum += Math.abs(a[i]! - b[i]!);
+    return sum / a.length;
+  };
+
+  async function renderWith(agent: Agent, projectId: string, patch: (s: Record<string, any>) => Record<string, any>) {
+    const p = (await agent.get(`/api/projects/${projectId}`)).body.project;
+    await agent.patch(`/api/projects/${projectId}`).send({ settings: patch(structuredClone(p.settings)) }).expect(200);
+    const { body } = await agent.post('/api/renders').send({ projectId }).expect(201);
+    await worker.runOnce();
+    const done = (await agent.get(`/api/renders/${body.render.id}`)).body.render;
+    expect(done.status).toBe('COMPLETED');
+    const out = await prisma.renderOutput.findFirstOrThrow({ where: { renderJobId: body.render.id } });
+    return { render: done, file: await store.withLocalFile(out.storageKey, async (f) => f) };
+  }
+
+  it('720p 를 고르면 1280x720 MP4 가 나오고, 구도는 1080p 와 같다 (줄인 크기일 뿐)', async () => {
+    const { agent } = await signedInAgent(app);
+    const { projectId } = await projectWithTracks(agent);
+    const look = (s: Record<string, any>) => ({
+      ...s,
+      background: { ...s.background, color: '#3A6EA5', dim: 0 },
+      titleLayer: { ...s.titleLayer, text: '해상도 비교', subtitle: '부제도 함께' }
+    });
+
+    const full = await renderWith(agent, projectId, (s) => ({ ...look(s), output: { width: 1920, height: 1080, fps: 30 } }));
+    const small = await renderWith(agent, projectId, (s) => ({ ...look(s), output: { width: 1280, height: 720, fps: 30 } }));
+    // 대조군: 같은 720p 인데 제목을 옮긴 것 — 비교 방법이 배치 차이를 잡아내는지 확인
+    const moved = await renderWith(agent, projectId, (s) => {
+      const l = look(s);
+      return { ...l, output: { width: 1280, height: 720, fps: 30 }, titleLayer: { ...l.titleLayer, position: { x: 0.4, y: 0.6 } } };
+    });
+
+    expect(await probeSize(full.file)).toEqual([1920, 1080]);
+    expect(await probeSize(small.file)).toEqual([1280, 720]);
+    expect([small.render.output.width, small.render.output.height]).toEqual([1280, 720]);
+    expect(small.render.output.sizeBytes).toBeLessThan(full.render.output.sizeBytes);
+
+    const [a, b, c] = await Promise.all([frameRgb(full.file), frameRgb(small.file), frameRgb(moved.file)]);
+    const same = meanDiff(a, b);
+    const different = meanDiff(b, c);
+    expect(same).toBeLessThan(3); // 압축·축소 오차 정도
+    expect(different).toBeGreaterThan(same * 2); // 배치가 다르면 확실히 커진다
+  });
+});
+
+describe('글꼴', () => {
+  it('서버에 등록된 글꼴이 실제로 쓰인다: 글꼴을 바꾸면 그려진 화면이 달라진다', () => {
+    const draw = (font: FontId) => {
+      const s = createDefaultSettings('글꼴');
+      s.titleLayer.font = font;
+      s.titleLayer.text = '노을 질 무렵 ABC';
+      const c = createCanvas(960, 540);
+      const g = c.getContext('2d') as unknown as FrameContext<never>;
+      g.scale(0.5, 0.5);
+      drawFrame(g, { ...s, title: 'x', tracks: [] }, -1, null, serverFonts);
+      return c.toBuffer('image/png');
+    };
+    const noto = draw('noto-sans-kr');
+    for (const f of FONT_IDS.filter((f) => f !== 'noto-sans-kr')) {
+      expect(draw(f).equals(noto), f).toBe(false);
+    }
   });
 });
 

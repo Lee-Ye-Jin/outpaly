@@ -50,7 +50,7 @@ export function PlaylistPanel(p: Props) {
   }
 
   return (
-    <section aria-label="플레이리스트" className="flex min-w-0 flex-[1_1_280px] flex-col border-r border-line bg-[#121216] lg:max-w-[360px]">
+    <section aria-label="플레이리스트" className="flex min-w-0 flex-[1_1_280px] flex-col border-r border-line bg-[#121216] lg:min-h-0 lg:max-w-[340px]">
       <div className="flex items-baseline justify-between px-5 pt-5 pb-3">
         <h2 className="text-[15px] font-semibold">플레이리스트</h2>
         <span className="text-xs text-text-2">{p.tracks.length}곡</span>

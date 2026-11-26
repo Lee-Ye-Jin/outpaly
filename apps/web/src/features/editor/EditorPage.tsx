@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useState, type Dispatch } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState, type CSSProperties, type Dispatch } from 'react';
 import { Link, useParams } from 'react-router';
 import {
   MAX_TRACKS_PER_PROJECT,
@@ -15,6 +15,8 @@ import { ProjectCanvas } from '../render/ProjectCanvas.tsx';
 import { DesignPanel } from './DesignPanel.tsx';
 import { editorReducer, initEditor, saveStatus, titleError, type EditorAction, type EditorState } from './editor-state.ts';
 import { LibraryDialog } from './LibraryDialog.tsx';
+import { LayoutOverlay } from './LayoutOverlay.tsx';
+import type { FrameLayout } from '@outpaly/render-core';
 import { PlaylistPanel } from './PlaylistPanel.tsx';
 import { TrackSettingsPanel } from './TrackSettingsPanel.tsx';
 import { Transport } from './Transport.tsx';
@@ -99,6 +101,7 @@ function Editor({ project }: { project: ProjectDetail }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<'design' | 'track'>('design');
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [layout, setLayout] = useState<FrameLayout | null>(null);
 
   const selectedIndex = pts.tracks.findIndex((t) => t.id === selectedId);
   const selected = selectedIndex >= 0 ? pts.tracks[selectedIndex] : undefined;
@@ -121,7 +124,8 @@ function Editor({ project }: { project: ProjectDetail }) {
   const highlight = usingPlaceholder ? 1 : player.index >= 0 ? player.index : selectedIndex;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    // 넓은 화면: 편집기를 창 높이에 고정하고 양쪽 패널만 각자 스크롤. 좁은 화면: 위아래로 쌓고 페이지 스크롤
+    <div className="flex min-h-screen flex-col lg:h-screen lg:min-h-0 lg:overflow-hidden">
       <TopBar state={state} dispatch={dispatch} tracksBusy={pts.busy} trackCount={pts.tracks.length} />
       {state.conflict && <ConflictBanner state={state} dispatch={dispatch} />}
       {pts.error && (
@@ -133,7 +137,7 @@ function Editor({ project }: { project: ProjectDetail }) {
         </div>
       )}
 
-      <div className="flex flex-1 flex-wrap items-stretch">
+      <div className="flex flex-1 flex-wrap items-stretch lg:min-h-0 lg:flex-nowrap">
         <PlaylistPanel
           tracks={docs}
           selectedId={selectedId}
@@ -146,33 +150,47 @@ function Editor({ project }: { project: ProjectDetail }) {
           onOpenLibrary={() => setLibraryOpen(true)}
         />
 
-        <section aria-label="미리보기" className="flex min-w-0 flex-[999_1_560px] flex-col gap-4 p-6">
-          <div className="mx-auto w-full max-w-[1040px]">
-            <ProjectCanvas
-              doc={previewDoc}
-              current={highlight}
-              className="w-full rounded-[10px] bg-panel-2 shadow-[0_0_0_1px_var(--color-line)]"
-              label={`${state.title} 미리보기`}
-            />
-            <p className="mt-2.5 flex flex-wrap justify-between gap-2 text-xs text-text-3">
-              <span>{usingPlaceholder ? '곡이 없어서 예시 곡으로 트랙리스트 배치를 보여 줘요.' : ''}</span>
+        {/* 미리보기 칸: 넓은 화면에서는 남은 공간에 "미리보기 + 안내 + 재생 막대" 묶음을 통째로 맞춘다.
+            묶음 너비 = min(칸 너비, (칸 높이 - 아래 줄들 높이) × 화면 비율) → 창이 낮아도 재생 막대까지 보이고, 사이가 벌어지지 않는다 */}
+        <section
+          aria-label="미리보기"
+          className="flex min-w-0 flex-[999_1_560px] items-center justify-center p-4 sm:p-6 lg:min-h-0 lg:[container-type:size]"
+        >
+          <div
+            className="flex w-full flex-col gap-3 lg:w-[min(100cqw,calc((100cqh-7.5rem)*var(--ar)))]"
+            style={{ '--ar': state.settings.output.width / state.settings.output.height } as CSSProperties}
+          >
+            <div className="relative">
+              <ProjectCanvas
+                doc={previewDoc}
+                current={highlight}
+                className="block w-full rounded-[10px] bg-panel-2 shadow-[0_0_0_1px_var(--color-line)]"
+                label={`${state.title} 미리보기`}
+                onLayout={setLayout}
+              />
+              <LayoutOverlay layout={layout} settings={state.settings} update={update} />
+            </div>
+            <p className="flex flex-wrap justify-between gap-2 text-xs text-text-3">
+              <span>
+                제목·트랙리스트를 끌어서 옮길 수 있어요{usingPlaceholder ? ' · 곡이 없어서 예시 곡으로 보여 줘요' : ''}
+              </span>
               <span>
                 {state.settings.output.width} × {state.settings.output.height} · 이 화면 그대로 MP4 로 만들어져요
               </span>
             </p>
+            <Transport
+              tracks={docs}
+              playing={player.playing}
+              time={player.time}
+              index={player.index}
+              error={player.error}
+              onToggle={player.toggle}
+              onSeek={player.seek}
+            />
           </div>
-          <Transport
-            tracks={docs}
-            playing={player.playing}
-            time={player.time}
-            index={player.index}
-            error={player.error}
-            onToggle={player.toggle}
-            onSeek={player.seek}
-          />
         </section>
 
-        <aside aria-label="설정" className="flex min-w-0 flex-[1_1_280px] flex-col border-l border-line bg-[#121216] lg:max-w-[340px]">
+        <aside aria-label="설정" className="flex min-w-0 flex-[1_1_280px] flex-col border-l border-line bg-[#121216] lg:min-h-0 lg:max-w-[340px]">
           <div role="tablist" aria-label="설정 패널" className="flex gap-1 border-b border-line p-3">
             {(
               [
@@ -195,7 +213,7 @@ function Editor({ project }: { project: ProjectDetail }) {
               </button>
             ))}
           </div>
-          <div role="tabpanel" className="overflow-y-auto">
+          <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto">
             {tab === 'track' && selected ? (
               <TrackSettingsPanel
                 key={selected.id}
@@ -210,7 +228,7 @@ function Editor({ project }: { project: ProjectDetail }) {
                 }}
               />
             ) : (
-              <DesignPanel settings={state.settings} update={update} />
+              <DesignPanel settings={state.settings} update={update} layout={layout} />
             )}
           </div>
         </aside>

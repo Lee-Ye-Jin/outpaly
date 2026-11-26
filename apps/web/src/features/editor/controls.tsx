@@ -1,11 +1,19 @@
 import { useId, type ReactNode } from 'react';
+import { FONT_CATALOG, FONT_IDS, type FontId } from '@outpaly/shared';
+import { useFontsReady } from '../render/useFontsReady.ts';
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+/** 접고 펼 수 있는 설정 묶음. 브라우저 기본 <details> 라 키보드·화면 낭독기에서 그대로 동작한다 */
+export function Section({ title, children, defaultOpen = true }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
   return (
-    <fieldset className="flex min-w-0 flex-col gap-3 border-0 p-0">
-      <legend className="mb-3 p-0 text-xs font-semibold tracking-wider text-text-2">{title}</legend>
-      {children}
-    </fieldset>
+    <details open={defaultOpen} className="group min-w-0 border-b border-line pb-5 last:border-b-0 last:pb-0">
+      <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-md text-xs font-semibold tracking-wider text-text-2 hover:text-text [&::-webkit-details-marker]:hidden">
+        {title}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-180">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </summary>
+      <div className="mt-2 flex min-w-0 flex-col gap-3">{children}</div>
+    </details>
   );
 }
 
@@ -101,7 +109,7 @@ export function ColorInput({ label, value, onChange }: { label: string; value: s
 
 export function Segmented<T extends string>(props: {
   label: string;
-  value: T;
+  value: T | null;
   options: readonly { value: T; label: string }[];
   onChange: (v: T) => void;
 }) {
@@ -152,6 +160,44 @@ export function Select<T extends string>(props: {
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+/** 글꼴 고르기: 분류별로 묶고, 고른 글꼴로 견본을 보여 준다 */
+export function FontSelect({ label, value, onChange }: { label: string; value: FontId; onChange: (v: FontId) => void }) {
+  const id = useId();
+  const ready = useFontsReady([value]);
+  const groups = FONT_IDS.reduce<Record<string, FontId[]>>((acc, f) => {
+    (acc[FONT_CATALOG[f].category] ??= []).push(f);
+    return acc;
+  }, {});
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <label htmlFor={id}>{label}</label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as FontId)}
+        className="min-h-10 rounded-lg border border-line-strong bg-ink px-2.5 text-sm"
+      >
+        {Object.entries(groups).map(([category, ids]) => (
+          <optgroup key={category} label={category}>
+            {ids.map((f) => (
+              <option key={f} value={f}>
+                {FONT_CATALOG[f].label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      <p
+        aria-hidden
+        className={`truncate rounded-md bg-panel-2 px-2.5 py-1.5 text-lg transition-opacity ${ready ? 'opacity-100' : 'opacity-40'}`}
+        style={{ fontFamily: `"${FONT_CATALOG[value].family}", sans-serif` }}
+      >
+        가나다라 노을 ABC 123
+      </p>
     </div>
   );
 }

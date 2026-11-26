@@ -146,7 +146,7 @@ export function ExportPage() {
           <dl className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-3">
             <Stat label="곡 수" value={`${project.trackCount}곡`} />
             <Stat label="영상 길이" value={formatTime(project.totalDuration)} />
-            <Stat label="출력" value={`${project.settings.output.height}p MP4`} />
+            <Stat label="출력" value={`${project.settings.output.width}×${project.settings.output.height}`} />
           </dl>
           <p className="-mt-3 text-xs text-text-3">
             해상도·디자인은 편집기에서 바꿀 수 있어요. 만들기를 누른 순간의 프로젝트로 영상을 만들어요.

@@ -1,25 +1,41 @@
-// 서버 렌더링용 글꼴 등록. 브라우저 미리보기(Google Fonts)와 같은 Noto Sans KR / Noto Serif KR 고정 굵기 파일.
+// 서버 렌더링용 글꼴 등록. 브라우저 미리보기(Google Fonts)와 같은 TTF 파일(@expo-google-fonts 패키지).
 // 가변(VF) 폰트는 굵기 지정이 제대로 되지 않아 쓰지 않는다 (render-core/fonts.ts 참고).
 
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { GlobalFonts } from '@napi-rs/canvas';
-import { FONT_IDS, type FontId } from '@outpaly/shared';
-import { serverFontFamily, type FontWeight } from '@outpaly/render-core';
+import { FONT_IDS, fontWeights, type FontId } from '@outpaly/shared';
+import { serverFontFamily } from '@outpaly/render-core';
 
 const require = createRequire(import.meta.url);
 
-const FILES: Record<FontId, { pkg: string; files: Record<FontWeight, string> }> = {
-  'noto-sans-kr': {
-    pkg: '@expo-google-fonts/noto-sans-kr',
-    files: { 400: '400Regular/NotoSansKR_400Regular.ttf', 700: '700Bold/NotoSansKR_700Bold.ttf' }
-  },
-  'noto-serif-kr': {
-    pkg: '@expo-google-fonts/noto-serif-kr',
-    files: { 400: '400Regular/NotoSerifKR_400Regular.ttf', 700: '700Bold/NotoSerifKR_700Bold.ttf' }
-  }
+/** @expo-google-fonts 의 파일 이름 앞부분 (예: NanumGothic_700Bold.ttf) */
+const FILE_PREFIX: Record<FontId, string> = {
+  'noto-sans-kr': 'NotoSansKR',
+  'noto-serif-kr': 'NotoSerifKR',
+  'nanum-gothic': 'NanumGothic',
+  'nanum-myeongjo': 'NanumMyeongjo',
+  'nanum-pen-script': 'NanumPenScript',
+  'gowun-dodum': 'GowunDodum',
+  'gowun-batang': 'GowunBatang',
+  'ibm-plex-sans-kr': 'IBMPlexSansKR',
+  'black-han-sans': 'BlackHanSans',
+  jua: 'Jua',
+  'do-hyeon': 'DoHyeon',
+  sunflower: 'Sunflower'
 };
+
+const WEIGHT_NAME: Record<number, string> = { 300: 'Light', 400: 'Regular', 500: 'Medium', 700: 'Bold' };
+
+/** 글꼴 하나·굵기 하나의 TTF 경로 */
+export function fontFile(id: FontId, weight: number, fontDir?: string): string {
+  const dirName = `${weight}${WEIGHT_NAME[weight]}`;
+  const file = `${FILE_PREFIX[id]}_${dirName}.ttf`;
+  if (fontDir) return path.join(fontDir, file);
+  const pkgDir = path.dirname(require.resolve(`@expo-google-fonts/${id}/package.json`));
+  return path.join(pkgDir, dirName, file);
+}
 
 let registered = false;
 
@@ -27,10 +43,8 @@ let registered = false;
 export function registerFonts(fontDir?: string) {
   if (registered) return;
   for (const id of FONT_IDS) {
-    const spec = FILES[id];
-    const base = fontDir ?? path.dirname(require.resolve(`${spec.pkg}/package.json`));
-    for (const weight of [400, 700] as const) {
-      const file = path.join(base, fontDir ? path.basename(spec.files[weight]) : spec.files[weight]);
+    for (const weight of fontWeights(id)) {
+      const file = fontFile(id, weight, fontDir);
       if (!existsSync(file)) throw new Error(`글꼴 파일이 없어요: ${file}`);
       if (!GlobalFonts.registerFromPath(file, serverFontFamily(id, weight))) {
         throw new Error(`글꼴을 등록하지 못했어요: ${file}`);

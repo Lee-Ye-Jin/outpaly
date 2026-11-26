@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import type { ProjectDoc } from '@outpaly/shared';
-import { drawFrame } from '@outpaly/render-core';
+import { drawFrame, type FrameLayout } from '@outpaly/render-core';
 import { assetsApi } from '../../services/assets-api.ts';
-import { useFontsReady } from './useFontsReady.ts';
+import { useFonts } from './useFontsReady.ts';
 import { useImage } from './useImage.ts';
 
 interface Props {
@@ -12,13 +12,22 @@ interface Props {
   /** 캔버스 실제 픽셀 너비. 미리보기는 출력 해상도 그대로, 썸네일은 작게 */
   pixelWidth?: number;
   className?: string;
+  style?: CSSProperties;
   label: string;
+  /** 그린 뒤 제목·트랙리스트 위치를 알려 준다 (편집기의 끌기 손잡이) */
+  onLayout?: (layout: FrameLayout) => void;
 }
 
 /** 서버 렌더러와 같은 drawFrame() 으로 그린다. 그래서 여기서 보이는 그대로 MP4 가 나온다. */
-export function ProjectCanvas({ doc, current = -1, pixelWidth, className, label }: Props) {
+export function ProjectCanvas({ doc, current = -1, pixelWidth, className, style, label, onLayout }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const fontsReady = useFontsReady();
+  const onLayoutRef = useRef(onLayout);
+  onLayoutRef.current = onLayout;
+  // 실제로 그릴 글자가 든 글자 묶음을 받는다 (제목·부제는 제목 글꼴, 곡 제목·시각은 트랙리스트 글꼴)
+  const titleFonts = useFonts([doc.titleLayer.font], `${doc.titleLayer.text}${doc.titleLayer.subtitle}…`);
+  const listFonts = useFonts([doc.tracklistLayer.font], `${doc.tracks.map((t) => t.displayTitle).join('')}0123456789:…`);
+  const fontsReady = titleFonts.ready && listFonts.ready;
+  const fontsVersion = titleFonts.version + listFonts.version;
   const assetId = doc.background.assetId;
   const bg = useImage(assetId ? assetsApi.fileUrl(assetId) : null);
   const width = pixelWidth ?? doc.output.width;
@@ -33,9 +42,10 @@ export function ProjectCanvas({ doc, current = -1, pixelWidth, className, label 
     ctx.clearRect(0, 0, width, height);
     // drawFrame 은 doc.output 크기의 캔버스를 가정하므로, 작은 캔버스에는 비율만큼 미리 줄인다
     ctx.scale(width / doc.output.width, width / doc.output.width);
-    drawFrame<HTMLImageElement>(ctx, doc, current, bg.status === 'ready' ? bg.image : null);
+    const layout = drawFrame<HTMLImageElement>(ctx, doc, current, bg.status === 'ready' ? bg.image : null);
     ctx.restore();
-  }, [doc, current, fontsReady, width, height, bg]);
+    onLayoutRef.current?.(layout);
+  }, [doc, current, fontsReady, fontsVersion, width, height, bg]);
 
   return (
     <canvas
@@ -45,7 +55,7 @@ export function ProjectCanvas({ doc, current = -1, pixelWidth, className, label 
       role="img"
       aria-label={bg.status === 'error' ? `${label} (배경 이미지를 불러오지 못했어요)` : label}
       className={className}
-      style={{ aspectRatio: `${doc.output.width} / ${doc.output.height}` }}
+      style={{ aspectRatio: `${doc.output.width} / ${doc.output.height}`, ...style }}
     />
   );
 }

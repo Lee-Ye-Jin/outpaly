@@ -73,12 +73,47 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** drawFrame 이 실제로 그린 위치 (1920x1080 좌표). 편집기가 미리보기 위에 끌기 손잡이를 얹을 때 쓴다 */
+export interface FrameLayout {
+  title: Rect | null;
+  tracklist: Rect | null;
+}
+
+/** 트랙리스트 줄 높이 */
+export const tracklistLineHeight = (ll: ProjectDoc['tracklistLayer']) => (ll.size * 1.3 + 0.7 * CQW) * ll.lineSpacing;
+
+/** 트랙리스트를 놓을 칸. 직접 배치(box)가 있으면 그것을, 없으면 기본 배치(position)를 쓴다 */
+export function tracklistBox(ll: ProjectDoc['tracklistLayer'], trackCount: number) {
+  const cols = ll.columns ?? (ll.position === 'bottom' ? 2 : 1);
+  const rows = Math.ceil(trackCount / cols);
+  const lineH = tracklistLineHeight(ll);
+  if (ll.box) return { x: ll.box.x * BASE_W, y: ll.box.y * BASE_H, width: ll.box.width * BASE_W, cols, rows, lineH };
+  const presets = {
+    right: { x: BASE_W - 35 * CQW, y: 14 * CQW, width: 30 * CQW },
+    left: { x: 5 * CQW, y: 18 * CQW, width: 30 * CQW },
+    bottom: { x: 5 * CQW, y: BASE_H - 5 * CQW - rows * lineH, width: BASE_W - 10 * CQW }
+  };
+  return { ...presets[ll.position], cols, rows, lineH };
+}
+
+/** 정렬에 따라 글자를 시작할 x */
+const alignedX = (align: 'left' | 'center' | 'right', anchorOrLeft: number, boxW: number, textW: number) =>
+  align === 'center' ? anchorOrLeft + (boxW - textW) / 2 : align === 'right' ? anchorOrLeft + boxW - textW : anchorOrLeft;
+
 /**
  * @param ctx      캔버스 컨텍스트. 캔버스 크기는 doc.output 과 같아야 한다.
  * @param doc      그릴 프로젝트
  * @param current  지금 나오는 곡 인덱스 (강조용, -1 이면 강조 없음)
  * @param bgImage  배경 이미지 (없으면 단색)
  * @param fonts    글꼴 이름 규칙. 브라우저는 기본값, Worker 는 serverFonts
+ * @returns        제목·트랙리스트가 그려진 위치
  */
 export function drawFrame<I extends FrameImage>(
   ctx: FrameContext<I>,
@@ -86,13 +121,14 @@ export function drawFrame<I extends FrameImage>(
   current: number,
   bgImage: I | null,
   fonts: FontResolver = browserFonts
-): void {
+): FrameLayout {
   const font = (id: FontId, weight: FontWeight, size: number) => {
     const f = fonts(id, weight);
     return `${f.weight} ${size}px "${f.family}"`;
   };
   const k = doc.output.width / BASE_W;
   const { background: bg, titleLayer: tl, tracklistLayer: ll } = doc;
+  const layout: FrameLayout = { title: null, tracklist: null };
 
   ctx.save();
   ctx.scale(k, k);
@@ -127,55 +163,65 @@ export function drawFrame<I extends FrameImage>(
 
   ctx.textBaseline = 'top';
 
-  // 제목
+  // 제목: position 은 정렬 기준점 (left = 왼쪽 끝, center = 가운데, right = 오른쪽 끝)
   if (tl.visible) {
-    const x = tl.position.x * BASE_W;
+    const ax = tl.position.x * BASE_W;
     const y = tl.position.y * BASE_H;
+    const maxW = BASE_W * 0.9;
     shadow(tl.shadow, tl.size);
+
+    ctx.font = font(tl.font, 700, tl.size);
+    const title = ellipsize(ctx, tl.text, maxW);
+    const titleW = ctx.measureText(title).width;
+    ctx.font = font(tl.font, 400, tl.subtitleSize);
+    const sub = tl.subtitle ? ellipsize(ctx, tl.subtitle, maxW) : '';
+    const subW = sub ? ctx.measureText(sub).width : 0;
+    const subY = y + tl.size * 1.05 + 0.8 * CQW;
+
+    const blockW = Math.max(titleW, subW);
+    const left = tl.align === 'center' ? ax - blockW / 2 : tl.align === 'right' ? ax - blockW : ax;
+
     ctx.fillStyle = tl.color;
     ctx.font = font(tl.font, 700, tl.size);
-    ctx.fillText(ellipsize(ctx, tl.text, BASE_W * 0.5), x, y);
-    if (tl.subtitle) {
+    ctx.fillText(title, alignedX(tl.align, left, blockW, titleW), y);
+    if (sub) {
       ctx.fillStyle = hexToRgba(tl.color, 0.8);
-      ctx.font = font(tl.font, 400, 1.6 * CQW);
-      ctx.fillText(ellipsize(ctx, tl.subtitle, BASE_W * 0.5), x, y + tl.size * 1.05 + 0.8 * CQW);
+      ctx.font = font(tl.font, 400, tl.subtitleSize);
+      ctx.fillText(sub, alignedX(tl.align, left, blockW, subW), subY);
     }
+    layout.title = { x: left, y, w: blockW, h: (sub ? subY + tl.subtitleSize * 1.25 : y + tl.size * 1.15) - y };
   }
 
   // 트랙리스트
   if (ll.visible && doc.tracks.length > 0) {
     const starts = computeStarts(doc.tracks);
-    const lineH = ll.size * 1.3 + 0.7 * CQW;
-    const boxes = {
-      right: { x: BASE_W - 35 * CQW, y: 14 * CQW as number | null, width: 30 * CQW, cols: 1 },
-      left: { x: 5 * CQW, y: 18 * CQW as number | null, width: 30 * CQW, cols: 1 },
-      bottom: { x: 5 * CQW, y: null as number | null, width: BASE_W - 10 * CQW, cols: 2 }
-    };
-    const box = boxes[ll.position];
-    const rows = Math.ceil(doc.tracks.length / box.cols);
-    const y0 = box.y ?? BASE_H - 5 * CQW - rows * lineH;
-    const colW = (box.width - (box.cols - 1) * 3 * CQW) / box.cols;
+    const box = tracklistBox(ll, doc.tracks.length);
+    const colGap = 3 * CQW;
+    const colW = (box.width - (box.cols - 1) * colGap) / box.cols;
     // 타임스탬프 칸 너비는 항상 보통 굵기로 잰다 (강조된 곡의 제목만 밀리지 않게)
     ctx.font = font(ll.font, 400, ll.size);
-    const tsWidth = ctx.measureText('0:00:00').width * 0.75 + 1.4 * CQW;
+    const tsWidth = ll.showTimestamps ? ctx.measureText('0:00:00').width * 0.75 + 1.4 * CQW : 0;
     shadow(ll.shadow, ll.size);
 
     doc.tracks.forEach((t, i) => {
-      const x = box.x + Math.floor(i / rows) * (colW + 3 * CQW);
-      const y = y0 + (i % rows) * lineH;
+      const colX = box.x + Math.floor(i / box.rows) * (colW + colGap);
+      const y = box.y + (i % box.rows) * box.lineH;
       const on = ll.highlightCurrent && i === current;
-      ctx.fillStyle = on ? HIGHLIGHT_COLOR : hexToRgba(ll.color, 0.86);
       ctx.font = font(ll.font, on ? 700 : 400, ll.size);
-      let tx = x;
+      const name = ellipsize(ctx, t.displayTitle, colW - tsWidth);
+      const lineW = tsWidth + ctx.measureText(name).width;
+      const x = alignedX(ll.align, colX, colW, lineW);
+      ctx.fillStyle = on ? HIGHLIGHT_COLOR : hexToRgba(ll.color, 0.86);
       if (ll.showTimestamps) {
         ctx.globalAlpha = 0.85;
         ctx.fillText(formatTime(starts[i] ?? 0), x, y);
         ctx.globalAlpha = 1;
-        tx = x + tsWidth;
       }
-      ctx.fillText(ellipsize(ctx, t.displayTitle, colW - (tx - x)), tx, y);
+      ctx.fillText(name, x + tsWidth, y);
     });
+    layout.tracklist = { x: box.x, y: box.y, w: box.width, h: box.rows * box.lineH };
   }
 
   ctx.restore();
+  return layout;
 }

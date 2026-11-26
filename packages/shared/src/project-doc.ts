@@ -2,13 +2,13 @@
 // 좌표와 크기는 모두 1920x1080 기준. 시간은 초 단위.
 
 import { z } from 'zod';
+import { FONT_IDS, type FontId as FontIdType } from './fonts.ts';
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
-/** 서버에 설치된 글꼴만 고를 수 있다 (미리보기와 렌더 결과를 맞추기 위해) */
-export const FONT_IDS = ['noto-sans-kr', 'noto-serif-kr'] as const;
+/** 서버에 있는 글꼴만 고를 수 있다 (미리보기와 렌더 결과를 맞추기 위해). 목록은 fonts.ts */
 export const FontId = z.enum(FONT_IDS);
-export type FontId = z.infer<typeof FontId>;
+export type FontId = FontIdType;
 
 export const OutputSettings = z.object({
   width: z.union([z.literal(1920), z.literal(1280)]),
@@ -33,6 +33,9 @@ export const BackgroundSettings = z.object({
   focusY: z.number().min(0).max(1).default(0.5)
 });
 
+export const TextAlign = z.enum(['left', 'center', 'right']);
+export type TextAlign = z.infer<typeof TextAlign>;
+
 export const TitleLayer = z.object({
   visible: z.boolean(),
   text: z.string().max(120),
@@ -42,18 +45,34 @@ export const TitleLayer = z.object({
   color: hexColor,
   position: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
   /** 글자 그림자 (밝은 배경 위에서도 읽히게). 예전 프로젝트에는 없으므로 기본 false (모양이 갑자기 바뀌지 않게) */
-  shadow: z.boolean().default(false)
+  shadow: z.boolean().default(false),
+  /** position.x 를 어디에 맞출지: left = 왼쪽 끝, center = 가운데, right = 오른쪽 끝 */
+  align: TextAlign.default('left'),
+  /** 부제 크기 (1920x1080 기준 px). 기본값 30.72 = 예전 고정값(1.6cqw) */
+  subtitleSize: z.number().min(12).max(100).default(30.72)
 });
 
 export const TracklistLayer = z.object({
   visible: z.boolean(),
+  /** 기본 배치. box 가 null 일 때 이 위치에 놓는다 */
   position: z.enum(['left', 'right', 'bottom']),
   highlightCurrent: z.boolean(),
   showTimestamps: z.boolean(),
   font: FontId,
   size: z.number().min(14).max(64),
   color: hexColor,
-  shadow: z.boolean().default(false)
+  shadow: z.boolean().default(false),
+  /** 직접 배치 (미리보기에서 끌어 옮긴 위치). null 이면 position 의 기본 배치. x·y·width 는 화면 비율(0~1) */
+  box: z
+    .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().min(0.1).max(1) })
+    .nullable()
+    .default(null),
+  /** 열 개수. null 이면 기본 배치에 따라 (아래 = 2열, 나머지 = 1열) */
+  columns: z.number().int().min(1).max(3).nullable().default(null),
+  /** 줄 간격 배율 */
+  lineSpacing: z.number().min(0.6).max(2.5).default(1),
+  /** 각 줄을 칸 안에서 어디에 맞출지 */
+  align: TextAlign.default('left')
 });
 
 /** projects.settings(JSONB) 에 저장되는 부분. 곡 목록은 project_tracks 테이블에 따로 저장한다. */
@@ -101,7 +120,9 @@ export function createDefaultSettings(title = '새 플레이리스트'): Project
       size: 84,
       color: '#FFFFFF',
       position: { x: 0.05, y: 0.09 },
-      shadow: true
+      shadow: true,
+      align: 'left',
+      subtitleSize: 30.72
     },
     tracklistLayer: {
       visible: true,
@@ -111,7 +132,11 @@ export function createDefaultSettings(title = '새 플레이리스트'): Project
       font: 'noto-sans-kr',
       size: 27,
       color: '#FFFFFF',
-      shadow: true
+      shadow: true,
+      box: null,
+      columns: null,
+      lineSpacing: 1,
+      align: 'left'
     }
   };
 }

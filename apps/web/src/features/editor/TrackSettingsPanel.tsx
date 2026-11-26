@@ -66,7 +66,7 @@ export function TrackSettingsPanel({ pt, index, onChange, onRemove, onPreview }:
   };
 
   return (
-    <div className="flex flex-col gap-7 p-5">
+    <div className="flex flex-col gap-5 p-5">
       <p className="text-xs text-text-2">
         {index + 1}번 곡 · 원본 {formatTime(duration)} · 영상에서 {formatTime(played)}
       </p>

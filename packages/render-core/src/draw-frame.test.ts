@@ -92,3 +92,101 @@ describe('drawFrame 글자 그림자', () => {
     expect(blur(thumb.calls)).toBeCloseTo(blur(full.calls) * 0.25, 6);
   });
 });
+
+// ---------- 배치 (직접 배치·정렬·열·줄 간격) ----------
+
+/** fillText 의 글자와 x 를 기록하는 가짜 캔버스 (글자 하나 = 10px) */
+function textRecorder() {
+  const texts: { text: string; x: number; y: number }[] = [];
+  const ctx: FrameContext = {
+    fillStyle: '',
+    font: '',
+    globalAlpha: 1,
+    textBaseline: '',
+    shadowColor: '',
+    shadowBlur: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
+    save() {},
+    restore() {},
+    scale() {},
+    fillRect() {},
+    fillText(text, x, y) {
+      texts.push({ text, x, y });
+    },
+    measureText: (t) => ({ width: t.length * 10 }),
+    drawImage() {}
+  };
+  return { ctx, texts };
+}
+
+const withTracks = (n: number, tweak: (s: ReturnType<typeof createDefaultSettings>) => void = () => {}): ProjectDoc => {
+  const s = createDefaultSettings('제목');
+  s.tracklistLayer.showTimestamps = false;
+  tweak(s);
+  return {
+    ...s,
+    title: '제목',
+    tracks: Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      trackId: `t${i}`,
+      displayTitle: `곡${i}`,
+      displayArtist: '',
+      sourceDuration: 60,
+      trimStart: 0,
+      trimEnd: null,
+      gain: 0,
+      gapAfter: 0
+    }))
+  };
+};
+
+describe('drawFrame 배치', () => {
+  it('기본 배치(오른쪽)는 예전과 같은 자리에 그린다 (기존 프로젝트의 모양이 바뀌지 않음)', () => {
+    const { ctx, texts } = textRecorder();
+    const layout = drawFrame(ctx, withTracks(3), -1, null);
+    expect(layout.tracklist!.x).toBeCloseTo(1920 - 35 * 19.2);
+    expect(layout.tracklist!.y).toBeCloseTo(14 * 19.2);
+    expect(layout.tracklist!.w).toBeCloseTo(30 * 19.2);
+    const first = texts.find((t) => t.text === '곡0')!;
+    expect(first.x).toBeCloseTo(1920 - 35 * 19.2);
+    // 제목도 예전 위치 (왼쪽 정렬, x = 5%)
+    expect(layout.title!.x).toBeCloseTo(96);
+  });
+
+  it('직접 배치(box)가 있으면 기본 배치 대신 그 자리에 그린다', () => {
+    const { ctx } = textRecorder();
+    const layout = drawFrame(ctx, withTracks(3, (s) => (s.tracklistLayer.box = { x: 0.25, y: 0.5, width: 0.5 })), -1, null);
+    expect(layout.tracklist).toMatchObject({ x: 480, y: 540, w: 960 });
+  });
+
+  it('열 개수와 줄 간격이 높이에 반영된다', () => {
+    const h = (tweak: (s: ReturnType<typeof createDefaultSettings>) => void) => drawFrame(textRecorder().ctx, withTracks(6, tweak), -1, null).tracklist!.h;
+    const base = h(() => {});
+    expect(h((s) => (s.tracklistLayer.columns = 2))).toBeCloseTo(base / 2); // 6줄 → 3줄
+    expect(h((s) => (s.tracklistLayer.lineSpacing = 1.5))).toBeCloseTo(base * 1.5);
+  });
+
+  it('트랙리스트 정렬: 오른쪽 정렬이면 각 줄이 칸 오른쪽 끝에 맞는다', () => {
+    const { ctx, texts } = textRecorder();
+    drawFrame(ctx, withTracks(2, (s) => {
+      s.tracklistLayer.box = { x: 0.1, y: 0.1, width: 0.5 };
+      s.tracklistLayer.align = 'right';
+    }), -1, null);
+    const line = texts.find((t) => t.text === '곡0')!;
+    expect(line.x + '곡0'.length * 10).toBeCloseTo(192 + 960);
+  });
+
+  it('제목 가운데 정렬: position.x 가 제목 덩어리의 가운데가 된다', () => {
+    const { ctx, texts } = textRecorder();
+    const layout = drawFrame(ctx, withTracks(0, (s) => {
+      s.titleLayer.align = 'center';
+      s.titleLayer.position = { x: 0.5, y: 0.4 };
+      s.titleLayer.text = '가운데';
+      s.titleLayer.subtitle = '부제는 더 길어요';
+    }), -1, null);
+    expect(layout.title!.x + layout.title!.w / 2).toBeCloseTo(960);
+    const title = texts.find((t) => t.text === '가운데')!;
+    expect(title.x + 30 / 2).toBeCloseTo(960); // 짧은 제목도 가운데
+  });
+});
