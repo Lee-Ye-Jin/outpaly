@@ -50,7 +50,7 @@ export function DesignPanel({ settings: s, update, layout }: { settings: Project
         />
         <p className="text-xs leading-relaxed text-text-3">
           {s.output.width === 1920 ? '1920×1080 · 유튜브 권장.' : '1280×720 · 렌더가 조금 빨라요.'} 구도는 같고 선명도만 달라요. 미리보기는
-          화면에 맞춰 보여 줘서 차이가 보이지 않아요.
+          화면에 맞춰 줄여 보여 줘요. 차이는 미리보기 아래 '실제 크기로 보기'로 확인할 수 있어요.
         </p>
       </Section>
 

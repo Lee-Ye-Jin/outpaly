@@ -16,6 +16,7 @@ import { DesignPanel } from './DesignPanel.tsx';
 import { editorReducer, initEditor, saveStatus, titleError, type EditorAction, type EditorState } from './editor-state.ts';
 import { LibraryDialog } from './LibraryDialog.tsx';
 import { LayoutOverlay } from './LayoutOverlay.tsx';
+import { useActualSizePref, useDevicePixelRatio, usePreviewZoom } from './usePreviewScale.ts';
 import type { FrameLayout } from '@outpaly/render-core';
 import { PlaylistPanel } from './PlaylistPanel.tsx';
 import { TrackSettingsPanel } from './TrackSettingsPanel.tsx';
@@ -102,6 +103,9 @@ function Editor({ project }: { project: ProjectDetail }) {
   const [tab, setTab] = useState<'design' | 'track'>('design');
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [layout, setLayout] = useState<FrameLayout | null>(null);
+  const [actualSize, setActualSize] = useActualSizePref();
+  const dpr = useDevicePixelRatio();
+  const { ref: frameRef, pct: zoomPct } = usePreviewZoom(state.settings.output.width, dpr);
 
   const selectedIndex = pts.tracks.findIndex((t) => t.id === selectedId);
   const selected = selectedIndex >= 0 ? pts.tracks[selectedIndex] : undefined;
@@ -157,27 +161,44 @@ function Editor({ project }: { project: ProjectDetail }) {
           className="flex min-w-0 flex-[999_1_560px] items-center justify-center p-4 sm:p-6 lg:min-h-0 lg:[container-type:size]"
         >
           <div
-            className="flex w-full flex-col gap-3 lg:w-[min(100cqw,calc((100cqh-7.5rem)*var(--ar)))]"
+            className={`flex w-full flex-col gap-3 ${actualSize ? 'lg:w-[100cqw]' : 'lg:w-[min(100cqw,calc((100cqh-7.5rem)*var(--ar)))]'}`}
             style={{ '--ar': state.settings.output.width / state.settings.output.height } as CSSProperties}
           >
-            <div className="relative">
-              <ProjectCanvas
-                doc={previewDoc}
-                current={highlight}
-                className="block w-full rounded-[10px] bg-panel-2 shadow-[0_0_0_1px_var(--color-line)]"
-                label={`${state.title} 미리보기`}
-                onLayout={setLayout}
-              />
-              <LayoutOverlay layout={layout} settings={state.settings} update={update} />
+            {/* 실제 크기: 영상 1픽셀 = 모니터 1픽셀 (Windows 화면 배율도 반영). 넘치면 이 칸 안에서 스크롤 */}
+            <div className={actualSize ? 'max-h-[65vh] overflow-auto rounded-[10px] lg:max-h-[calc(100cqh-7.5rem)]' : ''}>
+              <div
+                ref={frameRef}
+                className="relative"
+                style={actualSize ? { width: state.settings.output.width / dpr } : undefined}
+              >
+                <ProjectCanvas
+                  doc={previewDoc}
+                  current={highlight}
+                  className="block w-full rounded-[10px] bg-panel-2 shadow-[0_0_0_1px_var(--color-line)]"
+                  label={`${state.title} 미리보기`}
+                  onLayout={setLayout}
+                />
+                <LayoutOverlay layout={layout} settings={state.settings} update={update} />
+              </div>
             </div>
-            <p className="flex flex-wrap justify-between gap-2 text-xs text-text-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-text-3">
               <span>
                 제목·트랙리스트를 끌어서 옮길 수 있어요{usingPlaceholder ? ' · 곡이 없어서 예시 곡으로 보여 줘요' : ''}
               </span>
-              <span>
-                {state.settings.output.width} × {state.settings.output.height} · 이 화면 그대로 MP4 로 만들어져요
+              <span className="flex items-center gap-2">
+                <span className="tabular-nums" aria-live="polite">
+                  {state.settings.output.width}×{state.settings.output.height} · {zoomPct ? `${zoomPct}%로 보는 중` : ''}
+                </span>
+                <button
+                  type="button"
+                  aria-pressed={actualSize}
+                  onClick={() => setActualSize(!actualSize)}
+                  className="min-h-8 rounded-md border border-line-strong px-2 text-text-2 hover:bg-panel-2 hover:text-text"
+                >
+                  {actualSize ? '화면에 맞추기' : '실제 크기로 보기'}
+                </button>
               </span>
-            </p>
+            </div>
             <Transport
               tracks={docs}
               playing={player.playing}
